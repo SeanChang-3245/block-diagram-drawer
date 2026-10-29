@@ -31,7 +31,13 @@ boxes, wires, junction dots and labels, so you can fine-tune it by hand.
   - signal names written next to a wire become that wire's label; a MUX's caption is grouped with it;
   - junction dots become automatic ones; `translate()` groups are seen through.
   Anything else is kept verbatim and can still be moved.
-- Grid snapping, undo / redo, grouping, copy / paste, PNG export, drag-and-drop open, crash-recovery autosave.
+- **Let an AI draw it**: the **AI prompt** button gives you a prompt to paste into any AI chat. The SVG it writes back
+  opens with every box, macro and wire editable and wires already attached to pins (see [FORMAT.md](FORMAT.md)).
+- **Custom macros** (`Ctrl+M`): turn a selection into a reusable symbol. Wire stubs whose ends touch nothing become its
+  pins, named after their labels. Macros live in your library (picker under `I`, export / import as a file) and every
+  diagram keeps its own copy, so files stay self-contained.
+- **Export** SVG, PNG and vector PDF.
+- Grid snapping, undo / redo, grouping, copy / paste, drag-and-drop open, crash-recovery autosave.
 - Runs entirely in your browser: no server, your diagrams never leave your machine.
 
 ## Keyboard shortcuts
@@ -49,7 +55,8 @@ boxes, wires, junction dots and labels, so you can fine-tune it by hand.
 | `Del` | Delete | `U` / `Shift+U` | Undo / redo |
 | `1` `2` `3` | Line style preset | `G` | Toggle grid |
 | `Ctrl+G` / `Ctrl+Shift+G` | Group / ungroup | `Ctrl+S` / `Ctrl+O` | Save / open |
-| `Ctrl+C` / `Ctrl+V` | Copy / paste | `Ctrl+E` | Export PNG |
+| `Ctrl+C` / `Ctrl+V` | Copy / paste | `Ctrl+E` / `Ctrl+P` | Export PNG / PDF |
+| `Ctrl+M` | Make custom macro from selection | | |
 
 While routing a wire: click to add points, `Space` flips the bend, double-click / `Enter` / right-click finishes.
 Holding `Shift` during move, copy or stretch locks the motion to one axis. Press `?` in the app for the full sheet.
@@ -79,7 +86,9 @@ src/ui/      canvas, toolbars, properties panel, shortcuts
 
 ### Saved file format
 
-Every shape is written as a normal, visible SVG group, tagged with its model:
+The format is documented for humans and AI tools in [FORMAT.md](FORMAT.md) (regenerate it with
+`npm run gen:format` after changing `src/io/aiFormat.ts`). Every shape is written as a normal, visible SVG
+group, tagged with its model:
 
 ```xml
 <g data-bdd="wire" data-bdd-json='{"type":"wire","points":[...],"busWidth":32,...}'>
@@ -100,7 +109,7 @@ Pushing to `main` builds and publishes the site with GitHub Actions
 1. ~~Basic editing: boxes, wires, styles, hotkeys, stretch, SVG save / open~~
 2. ~~Hardware macros: MUX with any number of inputs, ALU, register / flip-flop, adder; ports that wires snap to; wire labels~~
 3. ~~Smarter import: recognise MUX / ALU shapes in AI-drawn SVGs~~
-4. Published format spec for AI tools, PDF export, user-defined macros
+4. ~~Published format spec for AI tools, PDF export, user-defined macros~~
 
 ## License
 

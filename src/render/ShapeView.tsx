@@ -14,7 +14,8 @@ export const ArrowMarkers = ({ doc }: { doc: Doc }) => {
   const colors = new Set<string>();
   for (const id of doc.order) {
     const s = doc.shapes[id];
-    if (s?.type === 'wire' && (s.arrowEnd || s.arrowStart)) colors.add(s.stroke.color);
+    const inner = s?.type === 'macro' && s.custom ? s.custom.shapes : [];
+    for (const w of [s, ...inner]) if (w?.type === 'wire' && (w.arrowEnd || w.arrowStart)) colors.add(w.stroke.color);
   }
   return (
     <defs>
@@ -128,10 +129,14 @@ const MacroView = ({ s }: { s: MacroShape }) => {
   };
   return (
     <>
-      {g.outline.kind === 'circle' ? (
-        <circle cx={g.outline.c.x} cy={g.outline.c.y} r={g.outline.r} {...common} />
-      ) : (
-        <path d={'M' + g.outline.pts.map((p) => `${p.x},${p.y}`).join(' L') + ' Z'} strokeLinejoin="miter" {...common} />
+      {g.outline.kind === 'circle' && <circle cx={g.outline.c.x} cy={g.outline.c.y} r={g.outline.r} {...common} />}
+      {g.outline.kind === 'poly' && <path d={'M' + g.outline.pts.map((p) => `${p.x},${p.y}`).join(' L') + ' Z'} strokeLinejoin="miter" {...common} />}
+      {s.kind === 'custom' && s.custom && (
+        <g transform={`translate(${s.x},${s.y})`}>
+          {s.custom.shapes.map((inner) => (
+            <ShapeBody key={inner.id} s={inner} />
+          ))}
+        </g>
       )}
       {g.marks.map((m, i) => (
         <polyline key={i} points={m.map((p) => `${p.x},${p.y}`).join(' ')} fill="none" stroke={s.stroke.color} strokeWidth={s.stroke.width * 0.8} />

@@ -80,7 +80,7 @@ export interface DotShape extends ShapeBase {
   color: string;
 }
 
-export type MacroKind = 'mux' | 'alu' | 'reg' | 'op';
+export type MacroKind = 'mux' | 'alu' | 'reg' | 'op' | 'custom';
 
 /** Direction signals flow through a macro: inputs on the upstream side. */
 export type Direction = 'right' | 'left' | 'down' | 'up';
@@ -117,6 +117,30 @@ export interface MacroShape extends ShapeBase {
   inPos?: number[];
   /** mux / alu: how far the output side is inset at each end. Default when absent. */
   slant?: number;
+  /** custom: the user-defined symbol this instance draws. */
+  custom?: CustomDef;
+}
+
+export interface CustomPort {
+  name: string;
+  /** Position relative to the macro's top-left corner. */
+  x: number;
+  y: number;
+  horizontal: boolean;
+}
+
+/**
+ * A user-defined macro: shapes relative to (0,0) plus named pins. Each
+ * instance carries its own copy, so a saved diagram is self-contained.
+ */
+export interface CustomDef {
+  /** Library id; instances made from the same library entry share it. */
+  id: string;
+  name: string;
+  w: number;
+  h: number;
+  shapes: Shape[];
+  ports: CustomPort[];
 }
 
 /** Imported SVG markup we don't understand; kept verbatim and movable. */

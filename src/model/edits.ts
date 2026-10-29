@@ -44,7 +44,8 @@ export const translateShape = (s: Shape, dx: number, dy: number): Shape => {
 
 type RectShape = BoxShape | MacroShape;
 
-export const isRectShape = (s: Shape | undefined): s is RectShape => s?.type === 'box' || s?.type === 'macro';
+/** Shapes whose edges can be stretched. Custom macros keep their drawn size and only move. */
+export const isRectShape = (s: Shape | undefined): s is RectShape => s?.type === 'box' || (s?.type === 'macro' && s.kind !== 'custom');
 
 const stretchRect = <T extends RectShape>(b: T, e: Edges, dx: number, dy: number): T => {
   const min = b.type === 'macro' ? minMacroSize(b) : { w: MIN_BOX, h: MIN_BOX };

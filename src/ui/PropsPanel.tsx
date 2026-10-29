@@ -2,7 +2,7 @@ import { useStore } from '../store';
 import { LINE_PRESETS } from '../model/presets';
 import { DEFAULT_LABEL_POS } from '../model/geometry';
 import { flowSize } from '../model/macros';
-import { arrangeSelection, rotateSelection } from './commands';
+import { addToLibrary, arrangeSelection, explodeSelection, makeMacro, rotateSelection } from './commands';
 import type { BoxShape, Dash, Direction, DotShape, MacroShape, Shape, Stroke, TextAnchor, TextShape, WireShape } from '../model/types';
 
 let colorCtx: CanvasRenderingContext2D | null = null;
@@ -269,6 +269,35 @@ const MacroFields = ({ first, patch }: { first: MacroShape; patch: Patch<MacroSh
   );
 };
 
+const CustomFields = ({ first }: { first: MacroShape }) => {
+  const inLibrary = useStore((s) => s.library.some((d) => d.id === first.custom?.id));
+  const def = first.custom;
+  if (!def) return null;
+  return (
+    <>
+      <Row label="Name">
+        <span>{def.name}</span>
+      </Row>
+      <Row label="Pins">
+        <span className="muted small">{def.ports.length ? def.ports.map((p) => p.name).join(', ') : 'none'}</span>
+      </Row>
+      <Row label="X / Y">
+        <span className="muted small">
+          {first.x}, {first.y} ({def.w} × {def.h})
+        </span>
+      </Row>
+      <div className="seg arrange">
+        <button type="button" onClick={explodeSelection} title="Turn back into ordinary shapes">Explode</button>
+        {!inLibrary && (
+          <button type="button" onClick={() => addToLibrary(def)} title="Keep this macro in your library for other diagrams">
+            Add to my macros
+          </button>
+        )}
+      </div>
+    </>
+  );
+};
+
 const ArrangeRow = () => (
   <section>
     <h4>Arrange</h4>
@@ -277,6 +306,9 @@ const ArrangeRow = () => (
       <button type="button" title="Bring forward (Ctrl+])" onClick={() => arrangeSelection('forward')}>Forward</button>
       <button type="button" title="Send backward (Ctrl+[)" onClick={() => arrangeSelection('backward')}>Backward</button>
       <button type="button" title="Send to back (Ctrl+Shift+[)" onClick={() => arrangeSelection('back')}>Back</button>
+    </div>
+    <div className="seg arrange make-macro">
+      <button type="button" title="Turn the selection into a reusable macro (Ctrl+M)" onClick={makeMacro}>Make macro…</button>
     </div>
   </section>
 );
@@ -317,7 +349,7 @@ const DotFields = ({ first, patch }: { first: DotShape; patch: Patch<DotShape> }
 );
 
 const TITLES: Record<Shape['type'], string> = { box: 'Box', wire: 'Wire', text: 'Label', dot: 'Junction', raw: 'Imported element', macro: 'Macro' };
-const MACRO_TITLES: Record<MacroShape['kind'], string> = { mux: 'MUX', alu: 'ALU', reg: 'Register', op: 'Operator' };
+const MACRO_TITLES: Record<MacroShape['kind'], string> = { mux: 'MUX', alu: 'ALU', reg: 'Register', op: 'Operator', custom: 'Custom macro' };
 
 export const PropsPanel = () => {
   const doc = useStore((s) => s.doc);
@@ -355,7 +387,8 @@ export const PropsPanel = () => {
             {first.type === 'wire' && <WireFields first={first} patch={patch as Patch<WireShape>} />}
             {first.type === 'text' && <TextFields first={first} patch={patch as Patch<TextShape>} />}
             {first.type === 'dot' && <DotFields first={first} patch={patch as Patch<DotShape>} />}
-            {first.type === 'macro' && <MacroFields first={first} patch={patch as Patch<MacroShape>} />}
+            {first.type === 'macro' && first.kind === 'custom' && <CustomFields first={first} />}
+            {first.type === 'macro' && first.kind !== 'custom' && <MacroFields first={first} patch={patch as Patch<MacroShape>} />}
             {first.type === 'raw' && <p className="muted">Kept exactly as it was in the imported file. You can move, copy or delete it.</p>}
           </section>
         );

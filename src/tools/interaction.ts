@@ -18,6 +18,7 @@ import {
   type Target,
 } from '../model/edits';
 import { MACRO_TEMPLATES, macroPorts, type Port } from '../model/macros';
+import { customInstance } from '../model/custom';
 import { GRID } from '../model/presets';
 import { newId, type Doc, type Pt, type Shape } from '../model/types';
 
@@ -179,6 +180,11 @@ const finishWire = () => {
 export const makePlaceable = (kind: Placeable, at: Pt, inputs: number): Shape => {
   if (kind === 'pipe') {
     return { ...defaultBox(), id: newId(), x: at.x, y: at.y, w: 20, h: 300, fill: '#d9d9d9', stroke: { color: '#000000', width: 1, dash: 'solid' } };
+  }
+  if (kind.startsWith('custom:')) {
+    const def = st().library.find((d) => `custom:${d.id}` === kind);
+    if (def) return customInstance(def, at);
+    kind = 'mux';
   }
   const t = MACRO_TEMPLATES.find((m) => m.kind === kind)!;
   return { ...t.make(at, { inputs }), id: newId() };

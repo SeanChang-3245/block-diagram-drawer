@@ -2,7 +2,7 @@
 // (so Ctrl+S overwrites the same file), falling back to upload / download.
 
 import { useStore } from '../store';
-import { exportPng, exportSvg } from './exportSvg';
+import { exportPdf, exportPng, exportSvg } from './exportSvg';
 import { importSvg } from './importSvg';
 import { fitView } from '../ui/viewOps';
 
@@ -41,6 +41,7 @@ export const loadSvgText = (text: string, name: string) => {
     if (native) s.notify(`Opened ${name}`);
     else {
       const found = [
+        !r && stats.macro && `${stats.macro} macros`,
         r?.mux && `${r.mux} MUX`,
         r?.alu && `${r.alu} ALU`,
         r?.op && `${r.op} operator`,
@@ -118,6 +119,18 @@ export const exportPngFile = async () => {
     download(blob, s.fileName.replace(/\.svg$/i, '') + '.png');
   } catch (e) {
     s.notify(`PNG export failed: ${(e as Error).message}`);
+  }
+};
+
+export const exportPdfFile = async () => {
+  const s = useStore.getState();
+  s.notify('Creating PDF…');
+  try {
+    const blob = await exportPdf(s.doc);
+    download(blob, s.fileName.replace(/\.svg$/i, '') + '.pdf');
+    s.notify('PDF exported');
+  } catch (e) {
+    s.notify(`PDF export failed: ${(e as Error).message}`);
   }
 };
 

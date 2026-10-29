@@ -7,6 +7,7 @@
 import { defaultBox, defaultText, defaultWire } from '../model/presets';
 import { textBounds } from '../model/geometry';
 import { translateShape } from '../model/edits';
+import { normalizeShape, routeConnections } from './model';
 import { recognize, recognizePolygon, type CircleCandidate, type RecognizeStats } from './recognize';
 import { newId, type BoxShape, type Dash, type Doc, type Pt, type RawShape, type Shape, type TextShape, type WireShape } from '../model/types';
 
@@ -152,6 +153,8 @@ interface ImportCtx {
   shapes: Shape[];
   /** Circles too big to be junction dots; may turn out to be operator nodes. */
   circles: CircleCandidate[];
+  /** Shapes that came with an explicit model; recognition leaves them alone. */
+  modelIds: Set<string>;
   serializer: XMLSerializer;
   viewBox: { x: number; y: number; w: number; h: number };
 }
@@ -202,12 +205,16 @@ const walk = (el: Element, ctx: ImportCtx, ignoreTransform = false): void => {
 
   const model = el.getAttribute('data-bdd-json');
   if (model) {
+    let s: Shape | null = null;
     try {
-      const s = JSON.parse(model) as Shape;
-      ctx.shapes.push({ ...s, id: s.id || newId() });
-      return;
+      s = normalizeShape(JSON.parse(model));
     } catch {
-      // malformed model: fall back to the visible markup below
+      // malformed JSON: fall back to the visible markup below
+    }
+    if (s) {
+      ctx.shapes.push(s);
+      ctx.modelIds.add(s.id);
+      return;
     }
   }
   if (el.hasAttribute('data-bdd-bg') || el.hasAttribute('data-bdd-derived')) return;
@@ -215,7 +222,7 @@ const walk = (el: Element, ctx: ImportCtx, ignoreTransform = false): void => {
     // Plain translations are undone so the contents stay editable; anything else is kept verbatim.
     const off = parseTranslate(el.getAttribute('transform')!);
     if (!off) return keepRaw(el, ctx);
-    const sub: ImportCtx = { ...ctx, shapes: [], circles: [] };
+    const sub: ImportCtx = { ...ctx, shapes: [], circles: [] }; // modelIds is shared
     walk(el, sub, true);
     ctx.shapes.push(...sub.shapes.map((s) => translateShape(s, off.x, off.y)));
     ctx.circles.push(...sub.circles.map((c) => ({ ...c, c: { x: c.c.x + off.x, y: c.c.y + off.y }, raw: translateShape(c.raw, off.x, off.y) as RawShape })));
@@ -362,12 +369,13 @@ export const importSvg = (source: string): ImportResult => {
       ? { x: vbNums[0], y: vbNums[1], w: vbNums[2], h: vbNums[3] }
       : { x: 0, y: 0, w: num(root.getAttribute('width'), 0), h: num(root.getAttribute('height'), 0) };
 
-  const ctx: ImportCtx = { shapes: [], circles: [], serializer: new XMLSerializer(), viewBox };
+  const ctx: ImportCtx = { shapes: [], circles: [], modelIds: new Set(), serializer: new XMLSerializer(), viewBox };
   walk(root, ctx);
   let shapes = ctx.shapes;
   let recognized: RecognizeStats | undefined;
-  if (!native) {
-    const r = recognize(mergeTextIntoBoxes(shapes), ctx.circles);
+  // Only plain primitives need guessing; shapes with a model are taken as written.
+  if (!native && shapes.some((s) => !ctx.modelIds.has(s.id))) {
+    const r = recognize(mergeTextIntoBoxes(shapes), ctx.circles, ctx.modelIds);
     shapes = r.shapes;
     recognized = r.stats;
   }
@@ -380,5 +388,5 @@ export const importSvg = (source: string): ImportResult => {
     doc.order.push(s.id);
     stats[s.type] = (stats[s.type] ?? 0) + 1;
   }
-  return { doc, native, stats, recognized };
+  return { doc: native ? doc : routeConnections(doc), native, stats, recognized };
 };

@@ -8,11 +8,14 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "gen:format": "vite-node scripts/gen-format.ts"
   },
   "dependencies": {
+    "jspdf": "4.2.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "svg2pdf.js": "2.8.1",
     "zustand": "^4.5.5"
   },
   "devDependencies": {

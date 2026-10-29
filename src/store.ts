@@ -1,13 +1,14 @@
 import { create } from 'zustand';
 import { LINE_PRESETS } from './model/presets';
-import { emptyDoc, type Doc, type MacroKind, type Shape, type Stroke } from './model/types';
+import { emptyDoc, type CustomDef, type Doc, type MacroKind, type Shape, type Stroke } from './model/types';
+import { loadLibrary } from './io/library';
 import type { Rect } from './model/geometry';
 import { syncConnections, type Edges } from './model/edits';
 
 export type ToolName = 'select' | 'rect' | 'wire' | 'bus' | 'text' | 'move' | 'copy' | 'stretch' | 'place';
 
-/** What the place command drops: a macro kind, or the pipeline-register box preset. */
-export type Placeable = MacroKind | 'pipe';
+/** What the place command drops: a macro kind, the pipeline-register box preset, or a library macro. */
+export type Placeable = Exclude<MacroKind, 'custom'> | 'pipe' | `custom:${string}`;
 
 export interface View {
   /** World coordinate shown at the canvas' top-left corner. */
@@ -57,6 +58,9 @@ interface State {
   placing: Placeable;
   muxInputs: number;
   showMacroPicker: boolean;
+  showAiPrompt: boolean;
+  /** User-defined macros kept in this browser. */
+  library: CustomDef[];
   showHelp: boolean;
   showProps: boolean;
   fileName: string;
@@ -114,6 +118,8 @@ export const useStore = create<State>((set, get) => ({
   placing: 'mux',
   muxInputs: 2,
   showMacroPicker: false,
+  showAiPrompt: false,
+  library: loadLibrary(),
   showHelp: false,
   showProps: true,
   fileName: 'diagram.svg',

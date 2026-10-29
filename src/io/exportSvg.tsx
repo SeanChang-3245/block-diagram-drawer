@@ -60,3 +60,23 @@ export const exportPng = async (doc: Doc, scale = 2): Promise<Blob> => {
     URL.revokeObjectURL(url);
   }
 };
+
+/** Vector PDF of the exported SVG. The PDF libraries load on first use. */
+export const exportPdf = async (doc: Doc): Promise<Blob> => {
+  const [{ jsPDF }, { svg2pdf }] = await Promise.all([import('jspdf'), import('svg2pdf.js')]);
+  const svgText = exportSvg(doc);
+  const el = new DOMParser().parseFromString(svgText, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
+  const w = Number(el.getAttribute('width')), h = Number(el.getAttribute('height'));
+  // svg2pdf measures text, so the element has to be in the document while it runs.
+  const host = document.createElement('div');
+  host.style.cssText = 'position:absolute;left:-99999px;top:0;visibility:hidden';
+  host.appendChild(document.importNode(el, true));
+  document.body.appendChild(host);
+  try {
+    const pdf = new jsPDF({ orientation: w >= h ? 'landscape' : 'portrait', unit: 'pt', format: [w, h], compress: true });
+    await svg2pdf(host.firstElementChild as Element, pdf, { x: 0, y: 0, width: w, height: h });
+    return pdf.output('blob');
+  } finally {
+    host.remove();
+  }
+};

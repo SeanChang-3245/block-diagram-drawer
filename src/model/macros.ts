@@ -22,8 +22,8 @@ export interface MacroText {
 }
 
 export interface MacroGeometry {
-  /** Closed outline, or a circle for operator nodes. */
-  outline: { kind: 'poly'; pts: Pt[] } | { kind: 'circle'; c: Pt; r: number };
+  /** Closed outline, a circle for operator nodes, or none for custom macros (which draw their own shapes). */
+  outline: { kind: 'poly'; pts: Pt[] } | { kind: 'circle'; c: Pt; r: number } | { kind: 'none' };
   /** Extra open strokes, e.g. the clock triangle. */
   marks: Pt[][];
   ports: Port[];
@@ -67,6 +67,11 @@ const lerp = (a: Pt, b: Pt, t: number): Pt => ({ x: a.x + (b.x - a.x) * t, y: a.
 export const muxInset = (L: number, T: number) => Math.min(L * 0.6, Math.max(6, Math.min(12, T * 0.15)));
 
 export const macroGeometry = (m: MacroShape): MacroGeometry => {
+  if (m.kind === 'custom') {
+    // Custom macros are drawn as defined: no rotation, pins carry their own direction.
+    const ports = (m.custom?.ports ?? []).map((p): Port => ({ name: p.name, p: { x: m.x + p.x, y: m.y + p.y }, role: 'in', horizontal: p.horizontal }));
+    return { outline: { kind: 'none' }, marks: [], ports, texts: [] };
+  }
   const g = rawGeometry(m);
   // Data pins sit on the flow axis; control pins (and the op's 2nd input) across it.
   const flowH = m.dir === 'right' || m.dir === 'left';
@@ -165,6 +170,8 @@ const rawGeometry = (m: MacroShape): Omit<MacroGeometry, 'ports'> & { ports: Raw
         texts: [{ p: { x: c.x, y: c.y + r * 0.38 }, text: m.symbol, size: Math.max(8, r * 1.1), anchor: 'middle' }],
       };
     }
+    case 'custom':
+      return { outline: { kind: 'none' }, marks: [], ports: [], texts: [] };
   }
 };
 
@@ -173,7 +180,7 @@ export const macroPorts = (m: MacroShape): Port[] => macroGeometry(m).ports;
 export const portPosition = (m: MacroShape, name: string): Pt | null => macroPorts(m).find((p) => p.name === name)?.p ?? null;
 
 export interface MacroTemplate {
-  kind: MacroKind;
+  kind: Exclude<MacroKind, 'custom'>;
   key: string;
   name: string;
   /** Builds a macro with its top-left corner at the given point. */
@@ -234,6 +241,7 @@ export const macroQuantum = (m: MacroShape): { along: number; across: number } =
     case 'reg':
       return { along: m.reset ? 60 : 20, across: 20 };
     case 'op':
+    case 'custom':
       return { along: 20, across: 20 };
   }
 };

@@ -1,9 +1,11 @@
 import { useStore, type Placeable } from '../store';
 import { LINE_PRESETS } from '../model/presets';
 import { arrange, duplicate, expandGroups, syncConnections, type Arrange } from '../model/edits';
-import { newId, type Direction, type Doc } from '../model/types';
+import { newId, type CustomDef, type Direction, type Doc } from '../model/types';
+import { explodeCustom, makeCustomMacro } from '../model/custom';
+import { libraryFile, parseLibraryFile, saveLibrary } from '../io/library';
 import { armTool, enter, escape, isBusy, space, startZoomBox } from '../tools/interaction';
-import { exportPngFile, newFile, openFile, saveFile } from '../io/files';
+import { exportPdfFile, exportPngFile, newFile, openFile, saveFile } from '../io/files';
 import { fitView, panBy, zoomBy } from './viewOps';
 
 const st = () => useStore.getState();
@@ -98,13 +100,85 @@ export const rotateSelection = () => {
   let n = 0;
   for (const id of selection) {
     const m = shapes[id];
-    if (m?.type !== 'macro') continue;
+    if (m?.type !== 'macro' || m.kind === 'custom') continue;
     const cx = m.x + m.w / 2, cy = m.y + m.h / 2;
     shapes[id] = { ...m, dir: CLOCKWISE[m.dir], w: m.h, h: m.w, x: Math.round(cx - m.h / 2), y: Math.round(cy - m.w / 2) };
     n++;
   }
   if (!n) return notify('Select a macro to rotate.');
   commit(syncConnections({ ...doc, shapes }));
+};
+
+const setLibrary = (library: CustomDef[]) => {
+  st().set({ library });
+  if (!saveLibrary(library)) st().notify('Could not save the macro library in this browser.');
+};
+
+export const addToLibrary = (def: CustomDef) => {
+  const { library } = st();
+  setLibrary([...library.filter((d) => d.id !== def.id), def]);
+};
+
+export const removeFromLibrary = (id: string) => {
+  const def = st().library.find((d) => d.id === id);
+  if (def && !confirm(`Remove "${def.name}" from your macros? Diagrams that use it keep their copy.`)) return;
+  setLibrary(st().library.filter((d) => d.id !== id));
+};
+
+/** Ctrl+M: turn the selection into a custom macro, placed where the shapes were and added to the library. */
+export const makeMacro = () => {
+  const { doc, selection, commit, notify } = st();
+  if (!selection.length) return notify('Select the shapes that make up the macro first.');
+  const name = prompt('Name of the new macro:', 'Macro');
+  if (name === null) return;
+  const r = makeCustomMacro(doc, selection, name);
+  if (!r.ok) return notify(r.error);
+  commit(r.doc, { select: [r.instance.id] });
+  addToLibrary(r.def);
+  notify(
+    r.def.ports.length
+      ? `Macro "${r.def.name}" created with pins ${r.def.ports.map((p) => p.name).join(', ')}`
+      : `Macro "${r.def.name}" created without pins. Add wire stubs ending in empty space to give it pins.`,
+  );
+};
+
+export const explodeSelection = () => {
+  const { doc, selection, commit } = st();
+  let next = doc;
+  const ids: string[] = [];
+  for (const id of selection) {
+    const r = explodeCustom(next, id);
+    next = r.doc;
+    ids.push(...r.ids);
+  }
+  if (next !== doc) commit(next, { select: ids });
+};
+
+export const exportLibrary = () => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(libraryFile(st().library));
+  a.download = 'macros.bdd.json';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+
+export const importLibrary = () => {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json,application/json';
+  input.onchange = async () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    try {
+      const incoming = parseLibraryFile(await file.text());
+      const ids = new Set(incoming.map((d) => d.id));
+      setLibrary([...st().library.filter((d) => !ids.has(d.id)), ...incoming]);
+      st().notify(`Added ${incoming.length} macro(s)`);
+    } catch (e) {
+      st().notify(`Could not read ${file.name}: ${(e as Error).message}`);
+    }
+  };
+  input.click();
 };
 
 /** Keys while the macro picker is open. */
@@ -123,6 +197,10 @@ const isTyping = (t: EventTarget | null) =>
 export const onKeyDown = (e: KeyboardEvent) => {
   if (isTyping(e.target) || st().textEdit) return;
   if (st().showMacroPicker) return pickerKey(e);
+  if (st().showAiPrompt || st().showHelp) {
+    if (e.key === 'Escape' || (e.key === '?' && st().showHelp)) st().set({ showAiPrompt: false, showHelp: false });
+    return;
+  }
   const mod = e.ctrlKey || e.metaKey;
   const k = e.key;
   const lower = k.toLowerCase();
@@ -139,6 +217,8 @@ export const onKeyDown = (e: KeyboardEvent) => {
         case 'c': return copyToClipboard(), true;
         case 'v': return paste(), true;
         case 'e': return void exportPngFile(), true;
+        case 'p': return void exportPdfFile(), true;
+        case 'm': return makeMacro(), true;
         case ']': case '}': return arrangeSelection(e.shiftKey ? 'front' : 'forward'), true;
         case '[': case '{': return arrangeSelection(e.shiftKey ? 'back' : 'backward'), true;
         default: return false;
@@ -186,4 +266,4 @@ export const onKeyDown = (e: KeyboardEvent) => {
   }
 };
 
-export { newFile, openFile, saveFile, exportPngFile };
+export { newFile, openFile, saveFile, exportPngFile, exportPdfFile };

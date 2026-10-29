@@ -246,7 +246,7 @@ export interface RecognizeStats {
   attached: number;
 }
 
-export const recognize = (input: Shape[], circles: CircleCandidate[]): { shapes: Shape[]; stats: RecognizeStats } => {
+export const recognize = (input: Shape[], circles: CircleCandidate[], keep: Set<string> = new Set()): { shapes: Shape[]; stats: RecognizeStats } => {
   let shapes = [...input];
   const stats: RecognizeStats = { mux: 0, alu: 0, op: 0, labels: 0, attached: 0 };
   const consumed = new Set<string>();
@@ -270,9 +270,9 @@ export const recognize = (input: Shape[], circles: CircleCandidate[]): { shapes:
   // Pins from the wires that touch each MUX / ALU; text inside an ALU is its name.
   const ends = wireEnds(shapes);
   const texts = shapes.filter((t): t is TextShape => t.type === 'text');
-  shapes = shapes.map((s) => (s.type === 'macro' && (s.kind === 'mux' || s.kind === 'alu') ? fitPins(s, ends, texts) : s));
+  shapes = shapes.map((s) => (s.type === 'macro' && !keep.has(s.id) && (s.kind === 'mux' || s.kind === 'alu') ? fitPins(s, ends, texts) : s));
   for (const m of shapes) {
-    if (m.type !== 'macro') continue;
+    if (m.type !== 'macro' || keep.has(m.id)) continue;
     if (m.kind === 'mux') stats.mux++;
     if (m.kind === 'alu') stats.alu++;
     const r = { x: m.x, y: m.y, w: m.w, h: m.h };

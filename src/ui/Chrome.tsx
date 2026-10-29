@@ -5,7 +5,8 @@ import { LINE_PRESETS } from '../model/presets';
 import { MACRO_TEMPLATES } from '../model/macros';
 import { armTool, makePlaceable } from '../tools/interaction';
 import { ShapeView } from '../render/ShapeView';
-import { applyPreset, choosePlaceable, exportPngFile, newFile, openFile, openMacroPicker, saveFile } from './commands';
+import { applyPreset, choosePlaceable, exportLibrary, exportPdfFile, exportPngFile, importLibrary, newFile, openFile, openMacroPicker, removeFromLibrary, saveFile } from './commands';
+import { AI_PROMPT } from '../io/aiFormat';
 import { fitView } from './viewOps';
 
 const ICONS: Record<ToolName, JSX.Element> = {
@@ -90,6 +91,7 @@ export const TopBar = () => {
         <button type="button" onClick={() => void saveFile()} title="Save SVG (Ctrl+S)">Save</button>
         <button type="button" onClick={() => void saveFile(true)} title="Save as (Ctrl+Shift+S)">Save as</button>
         <button type="button" onClick={() => void exportPngFile()} title="Export PNG (Ctrl+E)">PNG</button>
+        <button type="button" onClick={() => void exportPdfFile()} title="Export vector PDF (Ctrl+P)">PDF</button>
       </div>
       <div className="group">
         <button type="button" disabled={!canUndo} onClick={() => useStore.getState().undo()} title="Undo (U)">Undo</button>
@@ -101,6 +103,7 @@ export const TopBar = () => {
         <button type="button" onClick={fitView} title="Fit (F)">Fit</button>
       </div>
       <div className="spacer" />
+      <button type="button" onClick={() => set({ showAiPrompt: true })} title="Get a prompt that makes an AI draw editable diagrams">AI prompt</button>
       <button type="button" onClick={() => set({ showHelp: true })} title="Shortcuts (?)">Shortcuts ?</button>
     </header>
   );
@@ -119,6 +122,7 @@ export const StatusBar = () => {
   const showWireOpts = tool === 'wire' || tool === 'bus';
   const placing = useStore((s) => s.placing);
   const muxInputs = useStore((s) => s.muxInputs);
+  const library = useStore((s) => s.library);
   return (
     <footer className="status">
       <span className="mode">{tool.toUpperCase()}</span>
@@ -147,7 +151,7 @@ export const StatusBar = () => {
       )}
       {tool === 'place' && (
         <span className="opts">
-          {PLACEABLES.find((p) => p.kind === placing)?.name}
+          {PLACEABLES.find((p) => p.kind === placing)?.name ?? library.find((d) => `custom:${d.id}` === placing)?.name}
           {placing === 'mux' && (
             <label className="inline">
               Inputs
@@ -189,9 +193,10 @@ const SHORTCUTS: [string, string][][] = [
     ['1 2 3', 'Line style: datapath / control / exception'],
     ['G', 'Toggle grid'],
     ['Ctrl+G / Ctrl+Shift+G', 'Group / ungroup'],
+    ['Ctrl+M', 'Make a custom macro from the selection'],
     ['Ctrl+S / Ctrl+O', 'Save / open SVG'],
     ['Ctrl+C / Ctrl+V', 'Copy / paste'],
-    ['Ctrl+E', 'Export PNG'],
+    ['Ctrl+E / Ctrl+P', 'Export PNG / PDF'],
     ['Ctrl+] / Ctrl+[', 'Bring forward / send backward'],
     ['Ctrl+Shift+] / [', 'Bring to front / send to back'],
   ],
@@ -252,11 +257,39 @@ export const PLACEABLES: { kind: Placeable; key: string; name: string }[] = [
   { kind: 'pipe', key: 'p', name: 'Pipeline register' },
 ];
 
-/** Picker opened by I: one key per macro, like a layout editor's instance form. */
+const PickerItem = ({ kind, label, hotkey, onRemove }: { kind: Placeable; label: string; hotkey?: string; onRemove?: () => void }) => {
+  const placing = useStore((s) => s.placing);
+  const muxInputs = useStore((s) => s.muxInputs);
+  const made = makePlaceable(kind, { x: 0, y: 0 }, kind === 'mux' ? muxInputs : 2);
+  // The real pipeline register is very tall; preview a short one.
+  const shape = made.type === 'box' ? { ...made, h: Math.min(made.h, 60) } : made;
+  const b = shape.type === 'box' || shape.type === 'macro' ? { w: shape.w, h: shape.h } : { w: 40, h: 40 };
+  const pad = 8;
+  const size = Math.max(b.w, b.h) + 2 * pad;
+  return (
+    <div className="picker-item">
+      <button type="button" className={placing === kind ? 'on' : ''} onClick={() => choosePlaceable(kind)}>
+        <svg width="64" height="64" viewBox={`${-pad} ${-pad} ${size} ${size}`} fontFamily="Helvetica, Arial, sans-serif">
+          <ShapeView s={shape} />
+        </svg>
+        <span>
+          {hotkey && <kbd>{hotkey.toUpperCase()}</kbd>} {label}
+        </span>
+      </button>
+      {onRemove && (
+        <button type="button" className="remove" title="Remove from library" onClick={onRemove}>
+          ×
+        </button>
+      )}
+    </div>
+  );
+};
+
+/** Picker opened by I: one key per macro, like a layout editor's instance form; library macros below. */
 export const MacroPicker = () => {
   const show = useStore((s) => s.showMacroPicker);
   const muxInputs = useStore((s) => s.muxInputs);
-  const placing = useStore((s) => s.placing);
+  const library = useStore((s) => s.library);
   const set = useStore((s) => s.set);
   if (!show) return null;
   return (
@@ -267,23 +300,9 @@ export const MacroPicker = () => {
           <span className="muted">press a key, or click</span>
         </div>
         <div className="picker-grid">
-          {PLACEABLES.map((p) => {
-            const made = makePlaceable(p.kind, { x: 0, y: 0 }, p.kind === 'mux' ? muxInputs : 2);
-            // The real pipeline register is very tall; preview a short one.
-            const shape = made.type === 'box' ? { ...made, h: 60 } : made;
-            const b = shape.type === 'box' || shape.type === 'macro' ? { w: shape.w, h: shape.h } : { w: 40, h: 40 };
-            const pad = 8;
-            return (
-              <button key={p.kind} type="button" className={placing === p.kind ? 'on' : ''} onClick={() => choosePlaceable(p.kind)}>
-                <svg width="64" height="64" viewBox={`${-pad} ${-pad} ${Math.max(b.w, b.h) + 2 * pad} ${Math.max(b.w, b.h) + 2 * pad}`} fontFamily="Helvetica, Arial, sans-serif">
-                  <ShapeView s={shape} />
-                </svg>
-                <span>
-                  <kbd>{p.key.toUpperCase()}</kbd> {p.name}
-                </span>
-              </button>
-            );
-          })}
+          {PLACEABLES.map((p) => (
+            <PickerItem key={p.kind} kind={p.kind} label={p.name} hotkey={p.key} />
+          ))}
         </div>
         <label className="inline picker-opt">
           MUX inputs
@@ -296,6 +315,58 @@ export const MacroPicker = () => {
           />
           <span className="muted">any number, not just powers of two; type digits here or press 2-9</span>
         </label>
+        <div className="help-head picker-lib-head">
+          <h3>My macros</h3>
+          <span className="group">
+            <button type="button" onClick={() => void importLibrary()} title="Add macros from a library file">Import…</button>
+            <button type="button" onClick={exportLibrary} disabled={!library.length} title="Save the library to a file">Export</button>
+          </span>
+        </div>
+        {library.length ? (
+          <div className="picker-grid">
+            {library.map((d) => (
+              <PickerItem key={d.id} kind={`custom:${d.id}`} label={d.name} onRemove={() => removeFromLibrary(d.id)} />
+            ))}
+          </div>
+        ) : (
+          <p className="muted small">
+            None yet. Select some shapes and press <kbd>Ctrl+M</kbd> to make one. Short wire stubs whose ends touch nothing become its pins,
+            named after their labels.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/** The format description to paste into an AI chat. */
+export const AiPromptDialog = () => {
+  const show = useStore((s) => s.showAiPrompt);
+  const set = useStore((s) => s.set);
+  if (!show) return null;
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(AI_PROMPT);
+      useStore.getState().notify('Prompt copied. Paste it into your AI chat, followed by what to draw.');
+    } catch {
+      useStore.getState().notify('Copy failed: select the text and copy it by hand.');
+    }
+  };
+  return (
+    <div className="help-backdrop" onClick={() => set({ showAiPrompt: false })}>
+      <div className="help ai" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="AI drawing prompt">
+        <div className="help-head">
+          <h2>Let an AI draw it</h2>
+          <span className="group">
+            <button type="button" onClick={() => void copy()}>Copy prompt</button>
+            <button type="button" onClick={() => set({ showAiPrompt: false })}>Close</button>
+          </span>
+        </div>
+        <p className="muted">
+          Paste this prompt into any AI chat, then describe the circuit. Open the SVG it returns here: every box, macro and wire will be editable,
+          with wires already attached to pins. Plain SVGs from AIs that ignore the format still import, with shapes recognised by their look.
+        </p>
+        <textarea className="ai-prompt" readOnly value={AI_PROMPT} onKeyDown={(e) => e.stopPropagation()} />
       </div>
     </div>
   );
