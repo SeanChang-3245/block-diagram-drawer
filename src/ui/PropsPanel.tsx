@@ -182,7 +182,9 @@ const MacroFields = ({ first, patch }: { first: MacroShape; patch: Patch<MacroSh
                   // Keep 20 units per input so the input ports stay on the grid.
                   const across = Math.max(inputs * 20, flowSize(s).T * (inputs / s.inputs) || inputs * 20);
                   const t = Math.round(across / 20) * 20;
-                  return s.dir === 'right' || s.dir === 'left' ? { ...s, inputs, h: t } : { ...s, inputs, w: t };
+                  // A new input count means even spacing again.
+                  const next = { ...s, inputs, inPos: undefined };
+                  return s.dir === 'right' || s.dir === 'left' ? { ...next, h: t } : { ...next, w: t };
                 }, 'mux-n')
               }
             />

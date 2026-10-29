@@ -6,6 +6,8 @@
 
 import { defaultBox, defaultText, defaultWire } from '../model/presets';
 import { textBounds } from '../model/geometry';
+import { translateShape } from '../model/edits';
+import { recognize, recognizePolygon, type CircleCandidate, type RecognizeStats } from './recognize';
 import { newId, type BoxShape, type Dash, type Doc, type Pt, type RawShape, type Shape, type TextShape, type WireShape } from '../model/types';
 
 const INHERITED = new Set(['fill', 'stroke', 'stroke-width', 'stroke-dasharray', 'font-size', 'font-weight', 'text-anchor']);
@@ -61,16 +63,18 @@ const parsePoints = (s: string): Pt[] => {
   return pts;
 };
 
-/** Points of a path made only of M/L/H/V commands, or null if it is anything else. */
-const parseOpenPath = (d: string): Pt[] | null => {
+/** Points of a single-subpath path made only of M/L/H/V (and a final Z), or null for anything else. */
+const parsePathPoints = (d: string): { pts: Pt[]; closed: boolean } | null => {
   const tokens = d.match(/[a-zA-Z]|-?(?:\d*\.\d+|\d+\.?)(?:e[-+]?\d+)?/g);
   if (!tokens) return null;
   const pts: Pt[] = [];
   let cmd = '';
   let cur: Pt = { x: 0, y: 0 };
   let i = 0;
+  let closed = false;
   const next = () => Number(tokens[i++]);
   while (i < tokens.length) {
+    if (closed) return null; // anything after Z
     if (/[a-zA-Z]/.test(tokens[i])) cmd = tokens[i++];
     const rel = cmd === cmd.toLowerCase();
     switch (cmd.toUpperCase()) {
@@ -96,11 +100,14 @@ const parseOpenPath = (d: string): Pt[] | null => {
         pts.push(cur);
         break;
       }
+      case 'Z':
+        closed = true;
+        break;
       default:
-        return null; // curves, arcs or Z: not a wire
+        return null; // curves and arcs
     }
   }
-  return pts.length >= 2 && pts.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y)) ? pts : null;
+  return pts.length >= 2 && pts.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y)) ? { pts, closed } : null;
 };
 
 /** Strip anything executable from markup we keep verbatim. */
@@ -143,6 +150,8 @@ const rawBBox = (markup: string, el: Element): RawShape['bbox'] => {
 
 interface ImportCtx {
   shapes: Shape[];
+  /** Circles too big to be junction dots; may turn out to be operator nodes. */
+  circles: CircleCandidate[];
   serializer: XMLSerializer;
   viewBox: { x: number; y: number; w: number; h: number };
 }
@@ -176,7 +185,18 @@ const wireFrom = (el: Element, points: Pt[]): WireShape => ({
   arrowEnd: hasMarker(el, 'marker-end'),
 });
 
-const walk = (el: Element, ctx: ImportCtx): void => {
+/** Offset of a transform made only of translate(...) steps, or null for anything else. */
+const parseTranslate = (t: string): Pt | null => {
+  let x = 0, y = 0;
+  const rest = t.replace(/translate\(\s*(-?[\d.e+-]+)(?:[\s,]+(-?[\d.e+-]+))?\s*\)/g, (_, a: string, b?: string) => {
+    x += Number(a);
+    y += Number(b ?? 0);
+    return '';
+  });
+  return rest.trim() === '' && Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+};
+
+const walk = (el: Element, ctx: ImportCtx, ignoreTransform = false): void => {
   const tag = el.localName;
   if (['defs', 'title', 'desc', 'metadata', 'style', 'script', 'marker', 'clipPath', 'mask', 'symbol'].includes(tag)) return;
 
@@ -191,7 +211,16 @@ const walk = (el: Element, ctx: ImportCtx): void => {
     }
   }
   if (el.hasAttribute('data-bdd-bg') || el.hasAttribute('data-bdd-derived')) return;
-  if (el.hasAttribute('transform') && tag !== 'svg') return keepRaw(el, ctx);
+  if (el.hasAttribute('transform') && tag !== 'svg' && !ignoreTransform) {
+    // Plain translations are undone so the contents stay editable; anything else is kept verbatim.
+    const off = parseTranslate(el.getAttribute('transform')!);
+    if (!off) return keepRaw(el, ctx);
+    const sub: ImportCtx = { ...ctx, shapes: [], circles: [] };
+    walk(el, sub, true);
+    ctx.shapes.push(...sub.shapes.map((s) => translateShape(s, off.x, off.y)));
+    ctx.circles.push(...sub.circles.map((c) => ({ ...c, c: { x: c.c.x + off.x, y: c.c.y + off.y }, raw: translateShape(c.raw, off.x, off.y) as RawShape })));
+    return;
+  }
 
   switch (tag) {
     case 'svg':
@@ -226,19 +255,27 @@ const walk = (el: Element, ctx: ImportCtx): void => {
       if (pts.length >= 2) ctx.shapes.push(wireFrom(el, pts));
       return;
     }
-    case 'path': {
+    case 'path':
+    case 'polygon': {
       const fill = color(attr(el, 'fill'), '#000000');
-      const pts = parseOpenPath(el.getAttribute('d') ?? '');
-      if (pts && fill === 'none') ctx.shapes.push(wireFrom(el, pts));
+      const parsed = tag === 'path' ? parsePathPoints(el.getAttribute('d') ?? '') : { pts: parsePoints(el.getAttribute('points') ?? ''), closed: true };
+      if (parsed && !parsed.closed && fill === 'none') return void ctx.shapes.push(wireFrom(el, parsed.pts));
+      const macro = parsed?.closed ? recognizePolygon(parsed.pts, { fill, stroke: strokeOf(el, 'none') }) : null;
+      if (macro) ctx.shapes.push({ ...macro, id: newId() });
       else keepRaw(el, ctx);
       return;
     }
     case 'circle': {
       const r = num(el.getAttribute('r'));
       const fill = color(attr(el, 'fill'), '#000000');
+      const c = { x: num(el.getAttribute('cx')), y: num(el.getAttribute('cy')) };
       if (r > 0 && r <= 4 && fill !== 'none') {
-        ctx.shapes.push({ id: newId(), type: 'dot', x: num(el.getAttribute('cx')), y: num(el.getAttribute('cy')), r, color: fill });
-      } else keepRaw(el, ctx);
+        ctx.shapes.push({ id: newId(), type: 'dot', ...c, r, color: fill });
+        return;
+      }
+      keepRaw(el, ctx);
+      const raw = ctx.shapes[ctx.shapes.length - 1];
+      if (raw.type === 'raw' && r > 4) ctx.circles.push({ raw, c, r, style: { fill, stroke: strokeOf(el, 'none') } });
       return;
     }
     case 'text': {
@@ -307,6 +344,8 @@ export interface ImportResult {
   /** True when the file was saved by this app (exact round trip). */
   native: boolean;
   stats: Partial<Record<Shape['type'], number>>;
+  /** What the hardware recognition pass found (foreign files only). */
+  recognized?: RecognizeStats;
 }
 
 export const importSvg = (source: string): ImportResult => {
@@ -323,9 +362,15 @@ export const importSvg = (source: string): ImportResult => {
       ? { x: vbNums[0], y: vbNums[1], w: vbNums[2], h: vbNums[3] }
       : { x: 0, y: 0, w: num(root.getAttribute('width'), 0), h: num(root.getAttribute('height'), 0) };
 
-  const ctx: ImportCtx = { shapes: [], serializer: new XMLSerializer(), viewBox };
+  const ctx: ImportCtx = { shapes: [], circles: [], serializer: new XMLSerializer(), viewBox };
   walk(root, ctx);
-  const shapes = native ? ctx.shapes : mergeTextIntoBoxes(ctx.shapes);
+  let shapes = ctx.shapes;
+  let recognized: RecognizeStats | undefined;
+  if (!native) {
+    const r = recognize(mergeTextIntoBoxes(shapes), ctx.circles);
+    shapes = r.shapes;
+    recognized = r.stats;
+  }
 
   const doc: Doc = { shapes: {}, order: [] };
   const stats: ImportResult['stats'] = {};
@@ -335,5 +380,5 @@ export const importSvg = (source: string): ImportResult => {
     doc.order.push(s.id);
     stats[s.type] = (stats[s.type] ?? 0) + 1;
   }
-  return { doc, native, stats };
+  return { doc, native, stats, recognized };
 };

@@ -16,8 +16,10 @@ describe('import of a foreign (AI-drawn) SVG', () => {
   it('recognises boxes, wires, junction dots and keeps the rest', () => {
     expect(native).toBe(false);
     expect(stats.wire).toBeGreaterThan(100);
-    expect(stats.dot).toBeGreaterThan(30);
-    expect(stats.raw).toBeGreaterThan(10); // mux / ALU paths
+    // Junction dots the app draws by itself are dropped; MUX / ALU paths become macros.
+    expect(stats.dot ?? 0).toBeLessThan(5);
+    expect(stats.raw ?? 0).toBe(0);
+    expect(stats.macro).toBe(12);
     // The full-canvas white background is dropped.
     expect(boxes.some((b) => b.w === 2400 && b.h === 1380)).toBe(false);
   });
@@ -28,7 +30,7 @@ describe('import of a foreign (AI-drawn) SVG', () => {
     expect(rf.text.split('\n')).toEqual(['Register File', '31 × 32, 2R1W', 'async read,', 'sync write,', 'write-through']);
     expect(rf.boldFirstLine).toBe(true);
     // Left-aligned annotations stay free text.
-    expect(all.some((s) => s.type === 'text' && (s as TextShape).text === 'rs1 data')).toBe(true);
+    expect(all.some((s) => s.type === 'text' && (s as TextShape).text === 'Hold muxes (sel = hold_id_ex):')).toBe(true);
   });
 
   it('maps line styles and arrows', () => {

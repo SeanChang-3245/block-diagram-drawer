@@ -28,7 +28,7 @@ export type Target =
 
 const MIN_BOX = GRID;
 
-const translateShape = (s: Shape, dx: number, dy: number): Shape => {
+export const translateShape = (s: Shape, dx: number, dy: number): Shape => {
   switch (s.type) {
     case 'box':
     case 'macro':

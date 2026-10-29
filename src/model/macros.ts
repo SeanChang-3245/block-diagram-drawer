@@ -94,12 +94,13 @@ const rawGeometry = (m: MacroShape): Omit<MacroGeometry, 'ports'> & { ports: Raw
   switch (m.kind) {
     case 'mux': {
       const n = Math.max(2, Math.round(m.inputs));
-      const k = muxInset(L, T);
+      const k = Math.min(T * 0.45, m.slant ?? muxInset(L, T));
+      const custom = m.inPos?.length === n ? m.inPos : null;
       const local = [{ u: 0, v: 0 }, { u: L, v: k }, { u: L, v: T - k }, { u: 0, v: T }];
       const ports: RawPort[] = [];
       const texts: MacroText[] = [...label];
       for (let i = 0; i < n; i++) {
-        const v = (T * (i + 0.5)) / n;
+        const v = custom ? T * custom[i] : (T * (i + 0.5)) / n;
         ports.push({ name: `in${i}`, p: at(0, v), role: 'in' });
         if (m.showIndices) texts.push(pinText(m, at, 0, v, String(i), 'in'));
       }
@@ -108,7 +109,8 @@ const rawGeometry = (m: MacroShape): Omit<MacroGeometry, 'ports'> & { ports: Raw
       return { outline: { kind: 'poly', pts: local.map((q) => at(q.u, q.v)) }, marks: [], ports, texts };
     }
     case 'alu': {
-      const k = T * 0.25;
+      const k = Math.min(T * 0.45, m.slant ?? T * 0.25);
+      const [pa, pb] = m.inPos?.length === 2 ? m.inPos : [0.25, 0.75];
       const local = [
         { u: 0, v: 0 }, { u: L, v: k }, { u: L, v: T - k }, { u: 0, v: T },
         { u: 0, v: T * 0.58 }, { u: L * 0.25, v: T * 0.5 }, { u: 0, v: T * 0.42 },
@@ -118,8 +120,8 @@ const rawGeometry = (m: MacroShape): Omit<MacroGeometry, 'ports'> & { ports: Raw
         outline: { kind: 'poly', pts: local.map((q) => at(q.u, q.v)) },
         marks: [],
         ports: [
-          { name: 'a', p: at(0, T * 0.25), role: 'in' },
-          { name: 'b', p: at(0, T * 0.75), role: 'in' },
+          { name: 'a', p: at(0, T * pa), role: 'in' },
+          { name: 'b', p: at(0, T * pb), role: 'in' },
           { name: 'out', p: at(L, T / 2), role: 'out' },
           { name: 'op', p: at(top.x, ctrlTop ? top.y : T - top.y), role: 'ctrl' },
         ],

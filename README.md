@@ -22,8 +22,15 @@ boxes, wires, junction dots and labels, so you can fine-tune it by hand.
 - **Stacking order**: bring forward / send backward / to front / to back.
 - **Stretch** (`S`) like a layout editor: drag a box edge or corner to resize, a wire segment to slide it, a vertex to move it,
   or drag a box around several edges and vertices to stretch them together. Wires whose ends touch a moving edge follow it.
-- **Import any SVG**: `rect` becomes a box, `line` / `polyline` / open paths become wires, small filled circles become junction
-  dots, centred text inside a rectangle becomes that box's label. Anything else is kept verbatim and can still be moved.
+- **Import any SVG** (e.g. one an AI drew) and get an editable diagram back:
+  - `rect` becomes a box (centred text inside becomes its label), `line` / `polyline` / open paths become wires;
+  - trapezoids become **MUXes**, with the input count and pin positions read from the wires (and constant labels like
+    `0`) that enter them, so a 6-input MUX comes back as a 6-input MUX; notched trapezoids become **ALUs**;
+    circles holding `+ × ⊕ …` become operator nodes;
+  - wire ends touching those pins are attached, so moving or stretching the MUX drags its wires along;
+  - signal names written next to a wire become that wire's label; a MUX's caption is grouped with it;
+  - junction dots become automatic ones; `translate()` groups are seen through.
+  Anything else is kept verbatim and can still be moved.
 - Grid snapping, undo / redo, grouping, copy / paste, PNG export, drag-and-drop open, crash-recovery autosave.
 - Runs entirely in your browser: no server, your diagrams never leave your machine.
 
@@ -92,7 +99,7 @@ Pushing to `main` builds and publishes the site with GitHub Actions
 
 1. ~~Basic editing: boxes, wires, styles, hotkeys, stretch, SVG save / open~~
 2. ~~Hardware macros: MUX with any number of inputs, ALU, register / flip-flop, adder; ports that wires snap to; wire labels~~
-3. Smarter import: recognise MUX / ALU shapes in AI-drawn SVGs
+3. ~~Smarter import: recognise MUX / ALU shapes in AI-drawn SVGs~~
 4. Published format spec for AI tools, PDF export, user-defined macros
 
 ## License

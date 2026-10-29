@@ -35,13 +35,21 @@ const download = (blob: Blob, name: string) => {
 export const loadSvgText = (text: string, name: string) => {
   const s = useStore.getState();
   try {
-    const { doc, native, stats } = importSvg(text);
+    const { doc, native, stats, recognized: r } = importSvg(text);
     s.loadDoc(doc, name);
     fitView();
     if (native) s.notify(`Opened ${name}`);
     else {
-      const parts = Object.entries(stats).map(([k, v]) => `${v} ${k}`);
-      s.notify(`Imported ${name}: ${parts.join(', ') || 'nothing recognised'}`);
+      const found = [
+        r?.mux && `${r.mux} MUX`,
+        r?.alu && `${r.alu} ALU`,
+        r?.op && `${r.op} operator`,
+        stats.box && `${stats.box} boxes`,
+        stats.wire && `${stats.wire} wires`,
+        r?.labels && `${r.labels} wire labels`,
+        stats.raw && `${stats.raw} kept as-is`,
+      ].filter(Boolean);
+      s.notify(`Imported ${name}: ${found.join(', ') || 'nothing recognised'}`);
     }
   } catch (e) {
     s.notify(`Could not open ${name}: ${(e as Error).message}`);

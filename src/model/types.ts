@@ -110,6 +110,13 @@ export interface MacroShape extends ShapeBase {
   reset: boolean;
   /** op: symbol drawn in the circle (+, ×, ⊕, ...). */
   symbol: string;
+  /**
+   * Custom data-input positions as fractions (0..1) across the macro, kept from
+   * an imported drawing so its wires still line up. Even spacing when absent.
+   */
+  inPos?: number[];
+  /** mux / alu: how far the output side is inset at each end. Default when absent. */
+  slant?: number;
 }
 
 /** Imported SVG markup we don't understand; kept verbatim and movable. */
