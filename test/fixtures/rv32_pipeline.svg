@@ -1,0 +1,357 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2400" height="1380" viewBox="0 0 2400 1380" font-family="Helvetica, Arial, sans-serif">
+<title>RV32IMA 5-stage pipeline: datapath and control</title>
+<defs><marker id="arr" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#000"/></marker><marker id="arrc" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#555"/></marker><marker id="arre" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#b03030"/></marker></defs>
+<rect x="0" y="0" width="2400" height="1380" fill="#ffffff"/>
+<text x="20" y="34" font-size="20" text-anchor="start" font-weight="bold" fill="#000">RV32IMA 5-stage in-order pipeline — datapath and control</text>
+<text x="20" y="58" font-size="12" text-anchor="start" font-weight="normal" fill="#444">Solid: datapath.  Dashed grey: control.  Dashed red: exception fields (exc, tval).  Block names match rtl/DESIGN.md.  Memory hierarchy and the PD build: rtl/top_hierarchy.svg.</text>
+<text x="205.0" y="124" font-size="16" text-anchor="middle" font-weight="bold" fill="#000">IF</text>
+<text x="624.0" y="124" font-size="16" text-anchor="middle" font-weight="bold" fill="#000">ID</text>
+<text x="1149.0" y="124" font-size="16" text-anchor="middle" font-weight="bold" fill="#000">EX</text>
+<text x="1724.0" y="124" font-size="16" text-anchor="middle" font-weight="bold" fill="#000">MEM</text>
+<text x="2194.0" y="124" font-size="16" text-anchor="middle" font-weight="bold" fill="#000">WB</text>
+<rect x="390" y="140" width="18" height="890" fill="#d9d9d9" stroke="#000"/>
+<text x="399.0" y="1046" font-size="12" text-anchor="middle" font-weight="bold" fill="#000">IF/ID</text>
+<rect x="840" y="140" width="18" height="890" fill="#d9d9d9" stroke="#000"/>
+<text x="849.0" y="1046" font-size="12" text-anchor="middle" font-weight="bold" fill="#000">ID/EX</text>
+<rect x="1440" y="140" width="18" height="890" fill="#d9d9d9" stroke="#000"/>
+<text x="1449.0" y="1046" font-size="12" text-anchor="middle" font-weight="bold" fill="#000">EX/MEM</text>
+<rect x="1990" y="140" width="18" height="890" fill="#d9d9d9" stroke="#000"/>
+<text x="1999.0" y="1046" font-size="12" text-anchor="middle" font-weight="bold" fill="#000">MEM/WB</text>
+<path d="M50,420 L70,428 L70,522 L50,530 Z" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<text x="60.0" y="416" font-size="9" text-anchor="middle" font-weight="normal" fill="#000">Next-PC</text>
+<rect x="100" y="452" width="60" height="46" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<text x="130.0" y="478.6666666666667" font-size="11" text-anchor="middle" font-weight="bold" fill="#000">PC</text>
+<polyline points="70,475 100,475" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<rect x="200" y="300" width="70" height="44" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<text x="235.0" y="325.6666666666667" font-size="11" text-anchor="middle" font-weight="bold" fill="#000">PC+4</text>
+<rect x="200" y="420" width="150" height="150" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<text x="275.0" y="485.6666666666667" font-size="11" text-anchor="middle" font-weight="bold" fill="#000">Instruction</text>
+<text x="275.0" y="498.6666666666667" font-size="11" text-anchor="middle" font-weight="normal" fill="#000">Scratchpad</text>
+<text x="275.0" y="511.6666666666667" font-size="11" text-anchor="middle" font-weight="normal" fill="#000">(ISPM, async read)</text>
+<polyline points="160,475 200,475" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<circle cx="180" cy="475" r="2.8" fill="#000"/>
+<polyline points="180,475 180,322 200,322" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<circle cx="180" cy="322" r="2.8" fill="#000"/>
+<polyline points="270,322 290,322 290,280 35,280 35,440 50,440" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<polyline points="350,520 390,520" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<text x="356" y="514" font-size="10" text-anchor="start" font-weight="normal" fill="#000">inst</text>
+<polyline points="180,475 180,1005 390,1005" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<text x="190" y="999" font-size="10" text-anchor="start" font-weight="normal" fill="#000">pc</text>
+<rect x="200" y="228" width="130" height="44" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<text x="265.0" y="247.5" font-size="9" text-anchor="middle" font-weight="bold" fill="#000">Fetch Check</text>
+<text x="265.0" y="258.5" font-size="9" text-anchor="middle" font-weight="normal" fill="#000">misaligned / out of range</text>
+<polyline points="180,322 180,250 200,250" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<polyline points="320,420 320,272" fill="none" stroke="#555" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arrc)"/>
+<text x="326" y="404" font-size="9" text-anchor="start" font-weight="normal" fill="#555">err</text>
+<polyline points="330,250 355,250 355,200 390,200" fill="none" stroke="#b03030" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arre)"/>
+<text x="334" y="242" font-size="9" text-anchor="start" font-weight="normal" fill="#b03030">exc</text>
+<polyline points="1300,890 1300,96 25,96 25,510 50,510" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<text x="560" y="90" font-size="10" text-anchor="start" font-weight="normal" fill="#000">branch / jump target (from EX)</text>
+<polyline points="290,570 290,1200" fill="none" stroke="#555" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arrc)"/>
+<text x="296" y="590" font-size="9" text-anchor="start" font-weight="normal" fill="#555">imem_wait</text>
+<polyline points="408,520 430,520" fill="none" stroke="#000" stroke-width="1.4"/>
+<polyline points="430,265 430,803" fill="none" stroke="#000" stroke-width="1.4"/>
+<circle cx="430" cy="520" r="2.8" fill="#000"/>
+<rect x="460" y="225" width="150" height="80" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<text x="535.0" y="262.1666666666667" font-size="11" text-anchor="middle" font-weight="bold" fill="#000">Decoder</text>
+<text x="535.0" y="275.1666666666667" font-size="11" text-anchor="middle" font-weight="normal" fill="#000">(Control)</text>
+<polyline points="430,265 460,265" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<polyline points="500,225 500,170 840,170" fill="none" stroke="#555" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arrc)"/>
+<text x="540" y="164" font-size="10" text-anchor="start" font-weight="normal" fill="#555">ctrl (EX + MEM + WB fields)</text>
+<polyline points="408,200 690,200" fill="none" stroke="#b03030" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arre)"/>
+<rect x="690" y="186" width="80" height="28" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<text x="730.0" y="203.0" font-size="9" text-anchor="middle" font-weight="bold" fill="#000">First Exc</text>
+<polyline points="610,250 730,250 730,214" fill="none" stroke="#b03030" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arre)"/>
+<text x="640" y="244" font-size="9" text-anchor="start" font-weight="normal" fill="#b03030">illegal</text>
+<polyline points="770,200 840,200" fill="none" stroke="#b03030" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arre)"/>
+<rect x="480" y="470" width="180" height="230" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<text x="570.0" y="562.6666666666666" font-size="11" text-anchor="middle" font-weight="bold" fill="#000">Register File</text>
+<text x="570.0" y="575.6666666666666" font-size="11" text-anchor="middle" font-weight="normal" fill="#000">31 × 32, 2R1W</text>
+<text x="570.0" y="588.6666666666666" font-size="11" text-anchor="middle" font-weight="normal" fill="#000">async read,</text>
+<text x="570.0" y="601.6666666666666" font-size="11" text-anchor="middle" font-weight="normal" fill="#000">sync write,</text>
+<text x="570.0" y="614.6666666666666" font-size="11" text-anchor="middle" font-weight="normal" fill="#000">write-through</text>
+<polyline points="430,500 480,500" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<text x="436" y="496" font-size="9" text-anchor="start" font-weight="normal" fill="#000">rs1</text>
+<polyline points="430,600 480,600" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<text x="436" y="596" font-size="9" text-anchor="start" font-weight="normal" fill="#000">rs2</text>
+<polyline points="660,542 770,542" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<text x="672" y="536" font-size="10" text-anchor="start" font-weight="normal" fill="#000">rs1 data</text>
+<polyline points="660,662 770,662" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<text x="672" y="656" font-size="10" text-anchor="start" font-weight="normal" fill="#000">rs2 data</text>
+<path d="M770,505 L790,513 L790,547 L770,555 Z" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<path d="M770,625 L790,633 L790,667 L770,675 Z" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<polyline points="790,530 840,530" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<polyline points="790,650 840,650" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<text x="680" y="735" font-size="9" text-anchor="start" font-weight="normal" fill="#555">Hold muxes (sel = hold_id_ex):</text>
+<text x="680" y="747" font-size="9" text-anchor="start" font-weight="normal" fill="#555">re-capture the forwarded operand</text>
+<text x="680" y="759" font-size="9" text-anchor="start" font-weight="normal" fill="#555">while EX is held</text>
+<rect x="480" y="780" width="140" height="46" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<text x="550.0" y="806.6666666666666" font-size="11" text-anchor="middle" font-weight="bold" fill="#000">Imm Gen</text>
+<polyline points="430,803 480,803" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<polyline points="620,803 840,803" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<text x="700" y="797" font-size="10" text-anchor="start" font-weight="normal" fill="#000">imm</text>
+<polyline points="408,1005 840,1005" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<path d="M900,505 L920,513 L920,597 L900,605 Z" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<path d="M900,632 L920,640 L920,710 L900,718 Z" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<text x="910" y="501" font-size="9" text-anchor="middle" font-weight="normal" fill="#000">Fwd-A</text>
+<text x="910" y="628" font-size="9" text-anchor="middle" font-weight="normal" fill="#000">Fwd-B</text>
+<polyline points="858,530 900,530" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<polyline points="858,650 900,650" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<polyline points="1472,645 1472,1070 880,1070 880,560 900,560" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<polyline points="880,680 900,680" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<circle cx="880" cy="680" r="2.8" fill="#000"/>
+<text x="1000" y="1065" font-size="10" text-anchor="start" font-weight="normal" fill="#000">forward from MEM (ALU / MUL / DIV result)</text>
+<polyline points="870,710 900,710" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<circle cx="870" cy="710" r="2.8" fill="#000"/>
+<text x="1000" y="1087" font-size="10" text-anchor="start" font-weight="normal" fill="#000">forward from WB (WB mux output)</text>
+<path d="M1000,535 L1020,543 L1020,617 L1000,625 Z" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<text x="1026" y="548" font-size="9" text-anchor="start" font-weight="normal" fill="#000">Op-A</text>
+<path d="M1000,655 L1020,663 L1020,757 L1000,765 Z" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<text x="1026" y="668" font-size="9" text-anchor="start" font-weight="normal" fill="#000">Op-B</text>
+<polyline points="920,555 1000,555" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<polyline points="920,675 1000,675" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<circle cx="930" cy="555" r="2.8" fill="#000"/>
+<circle cx="948" cy="555" r="2.8" fill="#000"/>
+<circle cx="938" cy="675" r="2.8" fill="#000"/>
+<circle cx="958" cy="675" r="2.8" fill="#000"/>
+<polyline points="930,555 930,490 750,490 750,520 770,520" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<polyline points="938,675 938,612 755,612 755,640 770,640" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<polyline points="968,1005 968,580 1000,580" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<circle cx="968" cy="1005" r="2.8" fill="#000"/>
+<text x="1004" y="609" font-size="8" text-anchor="start" font-weight="normal" fill="#000">0</text>
+<polyline points="858,803 1030,803" fill="none" stroke="#000" stroke-width="1.4"/>
+<polyline points="978,803 978,700 1000,700" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<circle cx="978" cy="803" r="2.8" fill="#000"/>
+<text x="1004" y="729" font-size="8" text-anchor="start" font-weight="normal" fill="#000">4</text>
+<text x="1004" y="752" font-size="8" text-anchor="start" font-weight="normal" fill="#000">0</text>
+<path d="M1060,540 L1130,590 L1130,700 L1060,750 L1060,665 L1078,645 L1060,625 Z" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<text x="1102" y="650" font-size="13" text-anchor="middle" font-weight="bold" fill="#000">ALU</text>
+<polyline points="1020,580 1060,580" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<polyline points="1020,710 1060,710" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<polyline points="1130,645 1440,645" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<text x="1150" y="639" font-size="10" text-anchor="start" font-weight="normal" fill="#000">alu_out / address</text>
+<polyline points="958,675 958,775 1440,775" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<text x="1150" y="769" font-size="10" text-anchor="start" font-weight="normal" fill="#000">rs2 (store / AMO data)</text>
+<rect x="1060" y="230" width="130" height="46" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<text x="1125.0" y="250.33333333333334" font-size="10" text-anchor="middle" font-weight="bold" fill="#000">Multiplier</text>
+<text x="1125.0" y="262.33333333333337" font-size="10" text-anchor="middle" font-weight="normal" fill="#000">(iterative)</text>
+<rect x="1060" y="300" width="130" height="46" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<text x="1125.0" y="320.3333333333333" font-size="10" text-anchor="middle" font-weight="bold" fill="#000">Divider</text>
+<text x="1125.0" y="332.3333333333333" font-size="10" text-anchor="middle" font-weight="normal" fill="#000">(iterative)</text>
+<rect x="1060" y="370" width="130" height="46" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<text x="1125.0" y="390.3333333333333" font-size="10" text-anchor="middle" font-weight="bold" fill="#000">Branch</text>
+<text x="1125.0" y="402.3333333333333" font-size="10" text-anchor="middle" font-weight="normal" fill="#000">Compare</text>
+<polyline points="948,555 948,243 1060,243" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<polyline points="958,675 958,263 1060,263" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<polyline points="948,313 1060,313" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<polyline points="958,333 1060,333" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<circle cx="948" cy="313" r="2.8" fill="#000"/>
+<circle cx="958" cy="333" r="2.8" fill="#000"/>
+<polyline points="948,383 1060,383" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<polyline points="958,403 1060,403" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<circle cx="948" cy="383" r="2.8" fill="#000"/>
+<circle cx="958" cy="403" r="2.8" fill="#000"/>
+<polyline points="1190,253 1440,253" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<polyline points="1190,323 1440,323" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<text x="1200" y="247" font-size="10" text-anchor="start" font-weight="normal" fill="#000">mul_out</text>
+<text x="1200" y="317" font-size="10" text-anchor="start" font-weight="normal" fill="#000">div_out</text>
+<polyline points="1190,268 1340,268 1340,1200" fill="none" stroke="#555" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arrc)"/>
+<text x="1200" y="282" font-size="9" text-anchor="start" font-weight="normal" fill="#555">mul_busy</text>
+<polyline points="1190,338 1355,338 1355,1200" fill="none" stroke="#555" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arrc)"/>
+<text x="1200" y="352" font-size="9" text-anchor="start" font-weight="normal" fill="#555">div_busy</text>
+<polyline points="1190,393 1370,393 1370,1200" fill="none" stroke="#555" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arrc)"/>
+<text x="1200" y="407" font-size="9" text-anchor="start" font-weight="normal" fill="#555">redirect_req</text>
+<rect x="1060" y="830" width="130" height="46" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<text x="1125.0" y="850.3333333333334" font-size="10" text-anchor="middle" font-weight="bold" fill="#000">JALR Target</text>
+<text x="1125.0" y="862.3333333333334" font-size="10" text-anchor="middle" font-weight="normal" fill="#000">(rs1 + imm) &amp; ~1</text>
+<rect x="1060" y="900" width="130" height="46" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<text x="1125.0" y="920.3333333333334" font-size="10" text-anchor="middle" font-weight="bold" fill="#000">Branch Target</text>
+<text x="1125.0" y="932.3333333333334" font-size="10" text-anchor="middle" font-weight="normal" fill="#000">PC + imm</text>
+<polyline points="948,555 948,845 1060,845" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<polyline points="1030,803 1030,915 1060,915" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<polyline points="1030,862 1060,862" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<circle cx="1030" cy="862" r="2.8" fill="#000"/>
+<polyline points="1045,1005 1045,932 1060,932" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<circle cx="1045" cy="1005" r="2.8" fill="#000"/>
+<path d="M1230,835 L1250,843 L1250,937 L1230,945 Z" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<polyline points="1190,853 1230,853" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<polyline points="1190,923 1230,923" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<polyline points="1250,890 1300,890" fill="none" stroke="#000" stroke-width="1.4"/>
+<polyline points="858,1005 1440,1005" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<polyline points="858,170 1440,170" fill="none" stroke="#555" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arrc)"/>
+<text x="1260" y="164" font-size="10" text-anchor="start" font-weight="normal" fill="#555">ctrl (MEM + WB fields)</text>
+<polyline points="1010,170 1010,539" fill="none" stroke="#555" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arrc)"/>
+<text x="1016" y="528" font-size="9" text-anchor="start" font-weight="normal" fill="#555">op_sel, alu_op</text>
+<polyline points="1125,170 1125,230" fill="none" stroke="#555" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arrc)"/>
+<text x="1131" y="222" font-size="9" text-anchor="start" font-weight="normal" fill="#555">mul_op, div_op, br_type</text>
+<polyline points="1240,170 1240,839" fill="none" stroke="#555" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arrc)"/>
+<text x="1246" y="828" font-size="9" text-anchor="start" font-weight="normal" fill="#555">is_jalr</text>
+<circle cx="1010" cy="170" r="2.8" fill="#555"/>
+<circle cx="1125" cy="170" r="2.8" fill="#555"/>
+<circle cx="1240" cy="170" r="2.8" fill="#555"/>
+<polyline points="858,200 1440,200" fill="none" stroke="#b03030" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arre)"/>
+<text x="870" y="214" font-size="9" text-anchor="start" font-weight="normal" fill="#b03030">exc, tval</text>
+<polyline points="1458,645 1660,645" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<circle cx="1472" cy="645" r="2.8" fill="#000"/>
+<circle cx="1490" cy="645" r="2.8" fill="#000"/>
+<circle cx="1505" cy="645" r="2.8" fill="#000"/>
+<polyline points="1490,645 1490,420 1990,420" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<circle cx="1490" cy="420" r="2.8" fill="#000"/>
+<text x="1800" y="414" font-size="10" text-anchor="start" font-weight="normal" fill="#000">alu_out</text>
+<rect x="1520" y="345" width="130" height="50" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<text x="1585.0" y="367.5" font-size="9" text-anchor="middle" font-weight="bold" fill="#000">Fault Check</text>
+<text x="1585.0" y="378.5" font-size="9" text-anchor="middle" font-weight="normal" fill="#000">misaligned / out of range</text>
+<polyline points="1490,420 1490,370 1520,370" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<polyline points="1680,560 1680,480 1600,480 1600,395" fill="none" stroke="#555" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arrc)"/>
+<text x="1606" y="474" font-size="9" text-anchor="start" font-weight="normal" fill="#555">err</text>
+<polyline points="1458,200 1660,200" fill="none" stroke="#b03030" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arre)"/>
+<rect x="1660" y="186" width="80" height="28" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<text x="1700.0" y="203.0" font-size="9" text-anchor="middle" font-weight="bold" fill="#000">First Exc</text>
+<polyline points="1650,370 1700,370 1700,214" fill="none" stroke="#b03030" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arre)"/>
+<polyline points="1740,200 1990,200" fill="none" stroke="#b03030" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arre)"/>
+<polyline points="1458,775 1525,775" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<rect x="1525" y="750" width="120" height="50" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<text x="1585.0" y="772.3333333333334" font-size="10" text-anchor="middle" font-weight="bold" fill="#000">Store Align</text>
+<text x="1585.0" y="784.3333333333334" font-size="10" text-anchor="middle" font-weight="normal" fill="#000">lanes + wmask</text>
+<polyline points="1645,775 1660,775" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<rect x="1660" y="560" width="160" height="240" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<text x="1740.0" y="647.3333333333334" font-size="10" text-anchor="middle" font-weight="bold" fill="#000">Data SRAM</text>
+<text x="1740.0" y="659.3333333333334" font-size="10" text-anchor="middle" font-weight="normal" fill="#000">(DataSRAM)</text>
+<text x="1740.0" y="671.3333333333334" font-size="10" text-anchor="middle" font-weight="normal" fill="#000">1RW, async read,</text>
+<text x="1740.0" y="683.3333333333334" font-size="10" text-anchor="middle" font-weight="normal" fill="#000">byte mask</text>
+<text x="1740.0" y="695.3333333333334" font-size="10" text-anchor="middle" font-weight="normal" fill="#000"></text>
+<text x="1740.0" y="707.3333333333334" font-size="10" text-anchor="middle" font-weight="normal" fill="#000">M3: D-cache</text>
+<text x="1740.0" y="719.3333333333334" font-size="10" text-anchor="middle" font-weight="normal" fill="#000">goes here</text>
+<polyline points="1820,620 1840,620" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<rect x="1840" y="595" width="70" height="50" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<text x="1875.0" y="617.3333333333334" font-size="10" text-anchor="middle" font-weight="bold" fill="#000">Load</text>
+<text x="1875.0" y="629.3333333333334" font-size="10" text-anchor="middle" font-weight="normal" fill="#000">Align/Ext</text>
+<rect x="1690" y="860" width="140" height="60" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<text x="1760.0" y="881.3333333333334" font-size="10" text-anchor="middle" font-weight="bold" fill="#000">AMO Unit</text>
+<text x="1760.0" y="893.3333333333334" font-size="10" text-anchor="middle" font-weight="normal" fill="#000">old ← rdata</text>
+<text x="1760.0" y="905.3333333333334" font-size="10" text-anchor="middle" font-weight="normal" fill="#000">op(old, rs2)</text>
+<polyline points="1515,775 1515,890 1690,890" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<circle cx="1515" cy="775" r="2.8" fill="#000"/>
+<polyline points="1710,800 1710,860" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<polyline points="1790,860 1790,800" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<text x="1714" y="836" font-size="9" text-anchor="start" font-weight="normal" fill="#000">rd</text>
+<text x="1794" y="836" font-size="9" text-anchor="start" font-weight="normal" fill="#000">wr</text>
+<rect x="1840" y="945" width="70" height="46" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<text x="1875.0" y="965.5" font-size="9" text-anchor="middle" font-weight="bold" fill="#000">LR/SC</text>
+<text x="1875.0" y="976.5" font-size="9" text-anchor="middle" font-weight="normal" fill="#000">Reservation</text>
+<polyline points="1505,645 1505,968 1840,968" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<text x="1520" y="962" font-size="9" text-anchor="start" font-weight="normal" fill="#000">address</text>
+<path d="M1925,595 L1945,603 L1945,987 L1925,995 Z" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<text x="1935" y="589" font-size="9" text-anchor="middle" font-weight="normal" fill="#000">mem_out</text>
+<polyline points="1910,620 1925,620" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<polyline points="1830,890 1925,890" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<polyline points="1910,968 1925,968" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<polyline points="1945,785 1990,785" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<polyline points="1458,253 1990,253" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<polyline points="1458,323 1990,323" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<polyline points="1458,1005 1990,1005" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<polyline points="1670,800 1670,1200" fill="none" stroke="#555" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arrc)"/>
+<text x="1664" y="815" font-size="9" text-anchor="end" font-weight="normal" fill="#555">dmem_wait</text>
+<polyline points="1700,920 1700,1200" fill="none" stroke="#555" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arrc)"/>
+<text x="1706" y="935" font-size="9" text-anchor="start" font-weight="normal" fill="#555">amo_busy</text>
+<polyline points="1458,170 1990,170" fill="none" stroke="#555" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arrc)"/>
+<text x="1800" y="164" font-size="10" text-anchor="start" font-weight="normal" fill="#555">ctrl (WB fields)</text>
+<polyline points="1560,170 1560,345" fill="none" stroke="#555" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arrc)"/>
+<circle cx="1560" cy="170" r="2.8" fill="#555"/>
+<text x="1566" y="222" font-size="9" text-anchor="start" font-weight="normal" fill="#555">mem_cmd, width,</text>
+<text x="1566" y="234" font-size="9" text-anchor="start" font-weight="normal" fill="#555">amo_funct</text>
+<text x="1566" y="246" font-size="9" text-anchor="start" font-weight="normal" fill="#555">(all MEM blocks)</text>
+<rect x="2040" y="455" width="130" height="60" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<text x="2105.0" y="476.3333333333333" font-size="10" text-anchor="middle" font-weight="bold" fill="#000">CSR File</text>
+<text x="2105.0" y="488.3333333333333" font-size="10" text-anchor="middle" font-weight="normal" fill="#000">mcycle, minstret</text>
+<text x="2105.0" y="500.3333333333333" font-size="10" text-anchor="middle" font-weight="normal" fill="#000">(read/write in WB)</text>
+<polyline points="2025,420 2025,485 2040,485" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<circle cx="2025" cy="420" r="2.8" fill="#000"/>
+<rect x="2060" y="960" width="60" height="36" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<text x="2090.0" y="981.6666666666666" font-size="11" text-anchor="middle" font-weight="bold" fill="#000">+4</text>
+<polyline points="2008,1005 2040,1005 2040,978 2060,978" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<path d="M2230,230 L2250,238 L2250,1002 L2230,1010 Z" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<text x="2224" y="1000" font-size="9" text-anchor="end" font-weight="normal" fill="#000">WB mux</text>
+<polyline points="2008,253 2230,253" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<polyline points="2008,323 2230,323" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<polyline points="2008,420 2230,420" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<polyline points="2170,485 2230,485" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<polyline points="2008,785 2230,785" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<polyline points="2120,978 2230,978" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<text x="2226" y="249" font-size="9" text-anchor="end" font-weight="normal" fill="#000">MUL</text>
+<text x="2226" y="319" font-size="9" text-anchor="end" font-weight="normal" fill="#000">DIV</text>
+<text x="2226" y="416" font-size="9" text-anchor="end" font-weight="normal" fill="#000">ALU</text>
+<text x="2226" y="481" font-size="9" text-anchor="end" font-weight="normal" fill="#000">CSR</text>
+<text x="2226" y="781" font-size="9" text-anchor="end" font-weight="normal" fill="#000">MEM</text>
+<text x="2226" y="974" font-size="9" text-anchor="end" font-weight="normal" fill="#000">PC+4</text>
+<polyline points="2250,620 2290,620" fill="none" stroke="#000" stroke-width="1.4"/>
+<circle cx="2290" cy="620" r="2.8" fill="#000"/>
+<polyline points="2290,620 2290,1114 645,1114 645,700" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<text x="1000" y="1109" font-size="10" text-anchor="start" font-weight="normal" fill="#000">register write-back: wdata (WB mux output)</text>
+<circle cx="2290" cy="1092" r="2.8" fill="#000"/>
+<polyline points="2290,1092 870,1092 870,590 900,590" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<rect x="2302" y="585" width="94" height="110" fill="#fff" stroke="#000" stroke-width="1.5"/>
+<text x="2349.0" y="621.0" font-size="9" text-anchor="middle" font-weight="bold" fill="#000">Commit Trace</text>
+<text x="2349.0" y="632.0" font-size="9" text-anchor="middle" font-weight="normal" fill="#000">valid = wb_commit</text>
+<text x="2349.0" y="643.0" font-size="9" text-anchor="middle" font-weight="normal" fill="#000">pc, inst, rd,</text>
+<text x="2349.0" y="654.0" font-size="9" text-anchor="middle" font-weight="normal" fill="#000">wdata, wen,</text>
+<text x="2349.0" y="665.0" font-size="9" text-anchor="middle" font-weight="normal" fill="#000">st_* (store)</text>
+<polyline points="2290,620 2302,620" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<polyline points="2008,1020 2350,1020 2350,695" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<text x="2050" y="1015" font-size="9" text-anchor="start" font-weight="normal" fill="#000">pc, inst, rd, st_*</text>
+<circle cx="2032" cy="1020" r="2.8" fill="#000"/>
+<polyline points="2032,1020 2032,1138 655,1138 655,700" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<text x="1000" y="1133" font-size="10" text-anchor="start" font-weight="normal" fill="#000">register write-back: rd, wen (from MEM/WB)</text>
+<rect x="2040" y="268" width="150" height="46" fill="#fff" stroke="#000" stroke-width="1.5" stroke-dasharray="5 3"/>
+<text x="2115.0" y="288.3333333333333" font-size="10" text-anchor="middle" font-weight="bold" fill="#000">Stop / Fatal</text>
+<text x="2115.0" y="300.3333333333333" font-size="10" text-anchor="middle" font-weight="normal" fill="#000">halt, fatal, kill</text>
+<polyline points="2008,200 2175,200 2175,268" fill="none" stroke="#b03030" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arre)"/>
+<polyline points="2180,314 2180,1160 150,1160 150,498" fill="none" stroke="#555" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arrc)"/>
+<text x="2186" y="360" font-size="9" text-anchor="start" font-weight="normal" fill="#555">kill</text>
+<polyline points="2008,170 2240,170" fill="none" stroke="#555" stroke-width="1.4" stroke-dasharray="6 4"/>
+<polyline points="2060,170 2060,268" fill="none" stroke="#555" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arrc)"/>
+<circle cx="2060" cy="170" r="2.8" fill="#555"/>
+<text x="2066" y="245" font-size="9" text-anchor="start" font-weight="normal" fill="#555">is_halt, self_loop</text>
+<polyline points="2240,170 2240,234" fill="none" stroke="#555" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arrc)"/>
+<text x="2256" y="222" font-size="9" text-anchor="start" font-weight="normal" fill="#555">wb_sel, reg_wen</text>
+<rect x="240" y="1200" width="1980" height="80" fill="#fafafa" stroke="#000" stroke-width="1.5" stroke-dasharray="5 3"/>
+<text x="1230.0" y="1230.6666666666667" font-size="11" text-anchor="middle" font-weight="bold" fill="#000">Hazard Unit</text>
+<text x="1230.0" y="1243.6666666666667" font-size="11" text-anchor="middle" font-weight="normal" fill="#000">inputs: rs1/rs2 (ID, EX), rd + late/valid (EX, MEM, WB); causes: imem_wait, mul_busy, div_busy, amo_busy, dmem_wait, redirect_req</text>
+<text x="1230.0" y="1256.6666666666667" font-size="11" text-anchor="middle" font-weight="normal" fill="#000">outputs: forward_a/b, hold_pc, hold_if_id / id_ex / ex_mem, bubble_if_id / id_ex / ex_mem / mem_wb, redirect</text>
+<polyline points="910,1200 910,714" fill="none" stroke="#555" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arrc)"/>
+<text x="916" y="1062" font-size="9" text-anchor="start" font-weight="normal" fill="#555">forward_a/b</text>
+<polyline points="395,1200 395,1052" fill="none" stroke="#555" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arrc)"/>
+<text x="401" y="1188" font-size="9" text-anchor="start" font-weight="normal" fill="#555">hold / bubble / redirect</text>
+<polyline points="403,1160 403,1052" fill="none" stroke="#555" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arrc)"/>
+<circle cx="403" cy="1160" r="2.8" fill="#555"/>
+<polyline points="845,1200 845,1052" fill="none" stroke="#555" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arrc)"/>
+<text x="839" y="1188" font-size="9" text-anchor="end" font-weight="normal" fill="#555">hold / bubble / redirect</text>
+<polyline points="853,1160 853,1052" fill="none" stroke="#555" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arrc)"/>
+<circle cx="853" cy="1160" r="2.8" fill="#555"/>
+<polyline points="1445,1200 1445,1052" fill="none" stroke="#555" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arrc)"/>
+<text x="1451" y="1188" font-size="9" text-anchor="start" font-weight="normal" fill="#555">hold / bubble</text>
+<polyline points="1453,1160 1453,1052" fill="none" stroke="#555" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arrc)"/>
+<circle cx="1453" cy="1160" r="2.8" fill="#555"/>
+<polyline points="1995,1200 1995,1052" fill="none" stroke="#555" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arrc)"/>
+<text x="2001" y="1188" font-size="9" text-anchor="start" font-weight="normal" fill="#555">bubble</text>
+<polyline points="2003,1160 2003,1052" fill="none" stroke="#555" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arrc)"/>
+<circle cx="2003" cy="1160" r="2.8" fill="#555"/>
+<text x="1478" y="1155" font-size="9" text-anchor="start" font-weight="normal" fill="#555">kill: every register &lt;- bubble, PC frozen</text>
+<polyline points="240,1235 130,1235 130,498" fill="none" stroke="#555" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arrc)"/>
+<text x="124" y="760" font-size="9" text-anchor="end" font-weight="normal" fill="#555">hold_pc</text>
+<polyline points="240,1260 60,1260 60,527" fill="none" stroke="#555" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arrc)"/>
+<text x="66" y="790" font-size="9" text-anchor="start" font-weight="normal" fill="#555">redirect</text>
+<text x="2250" y="1205" font-size="11" text-anchor="start" font-weight="bold" fill="#000">Legend</text>
+<polyline points="2250,1221 2280,1221" fill="none" stroke="#000" stroke-width="1.4" marker-end="url(#arr)"/>
+<text x="2288" y="1225" font-size="10" text-anchor="start" font-weight="normal" fill="#000">datapath</text>
+<polyline points="2250,1239 2280,1239" fill="none" stroke="#555" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arrc)"/>
+<text x="2288" y="1243" font-size="10" text-anchor="start" font-weight="normal" fill="#000">control</text>
+<polyline points="2250,1257 2280,1257" fill="none" stroke="#b03030" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arre)"/>
+<text x="2288" y="1261" font-size="10" text-anchor="start" font-weight="normal" fill="#000">exception (exc, tval)</text>
+<rect x="2260" y="1269" width="10" height="20" fill="#d9d9d9" stroke="#000"/>
+<text x="2288" y="1283" font-size="10" text-anchor="start" font-weight="normal" fill="#000">pipeline register</text>
+<path d="M2260,1295 L2272,1300 L2272,1314 L2260,1319 Z" fill="#fff" stroke="#000"/>
+<text x="2288" y="1311" font-size="10" text-anchor="start" font-weight="normal" fill="#000">mux</text>
+<text x="20" y="1335" font-size="11" text-anchor="start" font-weight="normal" fill="#444">Exceptions travel with the instruction: tval is the PC for a fetch fault, the encoding for an illegal instruction and the address for a memory fault; at each First Exc the older exception wins, and the first one to reach WB stops the core (Stop / Fatal).</text>
+<text x="20" y="1355" font-size="11" text-anchor="start" font-weight="normal" fill="#444">The control bundle is pipelined like the datapath: each pipeline register keeps only the fields still needed downstream, and each stage taps off its own.</text>
+</svg>
