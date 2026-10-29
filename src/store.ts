@@ -1,10 +1,13 @@
 import { create } from 'zustand';
 import { LINE_PRESETS } from './model/presets';
-import { emptyDoc, type Doc, type Shape, type Stroke } from './model/types';
+import { emptyDoc, type Doc, type MacroKind, type Shape, type Stroke } from './model/types';
 import type { Rect } from './model/geometry';
-import type { Edges } from './model/edits';
+import { syncConnections, type Edges } from './model/edits';
 
-export type ToolName = 'select' | 'rect' | 'wire' | 'bus' | 'text' | 'move' | 'copy' | 'stretch';
+export type ToolName = 'select' | 'rect' | 'wire' | 'bus' | 'text' | 'move' | 'copy' | 'stretch' | 'place';
+
+/** What the place command drops: a macro kind, or the pipeline-register box preset. */
+export type Placeable = MacroKind | 'pipe';
 
 export interface View {
   /** World coordinate shown at the canvas' top-left corner. */
@@ -19,6 +22,10 @@ export interface Overlay {
   rectPreview?: Rect;
   wirePreview?: { points: { x: number; y: number }[] };
   hover?: { kind: 'box'; id: string; edges: Edges } | { kind: 'wire'; id: string; points: number[] } | { kind: 'shape'; id: string };
+  /** Shape following the cursor in the place command. */
+  ghost?: Shape;
+  /** Port the wire tool will snap to. */
+  port?: { x: number; y: number };
 }
 
 export interface TextEdit {
@@ -47,6 +54,9 @@ interface State {
   gridVisible: boolean;
   snapOn: boolean;
   textEdit: TextEdit | null;
+  placing: Placeable;
+  muxInputs: number;
+  showMacroPicker: boolean;
   showHelp: boolean;
   showProps: boolean;
   fileName: string;
@@ -79,6 +89,7 @@ export const TOOL_PROMPTS: Record<ToolName, string> = {
   move: 'Move: click a reference point, then the destination. Hold Shift to lock the axis.',
   copy: 'Copy: click a reference point, then the destination. Hold Shift to lock the axis.',
   stretch: 'Stretch: click an edge, corner, vertex or segment, or drag a box around the edges to stretch.',
+  place: 'Place: click to drop the macro (top-left corner at the cursor). Esc to stop.',
 };
 
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
@@ -100,6 +111,9 @@ export const useStore = create<State>((set, get) => ({
   gridVisible: true,
   snapOn: true,
   textEdit: null,
+  placing: 'mux',
+  muxInputs: 2,
+  showMacroPicker: false,
   showHelp: false,
   showProps: true,
   fileName: 'diagram.svg',
@@ -168,7 +182,8 @@ export const useStore = create<State>((set, get) => ({
         changed = true;
       }
     }
-    if (changed) commit({ ...doc, shapes }, { key });
+    // Attached wires follow edits such as a MUX gaining inputs.
+    if (changed) commit(syncConnections({ ...doc, shapes }), { key });
   },
   loadDoc: (doc, fileName) =>
     set({ doc, past: [], future: [], preview: null, selection: [], fileName, dirty: false, lastCommitKey: null }),

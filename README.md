@@ -13,6 +13,13 @@ boxes, wires, junction dots and labels, so you can fine-tune it by hand.
 - **Wires**: orthogonal routing, color, solid / dashed / dotted, arrowheads at either end.
 - **Buses**: a wire with the classic slash-and-number width mark (`/ 32`).
 - **Line style presets** on keys `1` `2` `3`: datapath (black solid), control (grey dashed), exception (red dashed).
+- **Hardware macros** (`I`): MUX with any number of inputs (not only powers of two), ALU, register / flip-flop
+  (clock triangle, optional enable and reset), operator node (`+ − × ⊕ & | =`), pipeline register. Any flow direction,
+  `Shift+R` rotates. Default sizes and stretch steps keep every port on the grid.
+- **Ports**: wires snap to macro pins and meet them head-on; attached wires follow when a macro moves, is stretched,
+  rotated or gains inputs. T-junction dots are added automatically.
+- **Wire labels**: signal names that ride along the wire; drag a label to slide it.
+- **Stacking order**: bring forward / send backward / to front / to back.
 - **Stretch** (`S`) like a layout editor: drag a box edge or corner to resize, a wire segment to slide it, a vertex to move it,
   or drag a box around several edges and vertices to stretch them together. Wires whose ends touch a moving edge follow it.
 - **Import any SVG**: `rect` becomes a box, `line` / `polyline` / open paths become wires, small filled circles become junction
@@ -28,8 +35,10 @@ boxes, wires, junction dots and labels, so you can fine-tune it by hand.
 | `W` | Wire | `C` | Copy |
 | `B` | Bus | `S` | Stretch |
 | `L` | Text label | `Q` | Toggle properties panel |
-| `I` | Place macro *(next milestone)* | `F` | Fit diagram |
-| `Esc` | Cancel step / exit command | `Z` / `Shift+Z` | Zoom in / out |
+| `I` | Place macro (then `M` `A` `R` `O` `P`) | `F` | Fit diagram |
+| `Esc` | Cancel step / exit command | `Z` | Zoom into an area (drag a box) |
+| `Shift+R` | Rotate macro 90° | `Shift+Z` | Zoom out 2× |
+| `Ctrl+]` / `Ctrl+[` | Bring forward / send backward | `Ctrl+Shift+]` / `[` | To front / to back |
 | `Del` | Delete | `U` / `Shift+U` | Undo / redo |
 | `1` `2` `3` | Line style preset | `G` | Toggle grid |
 | `Ctrl+G` / `Ctrl+Shift+G` | Group / ungroup | `Ctrl+S` / `Ctrl+O` | Save / open |
@@ -39,6 +48,7 @@ While routing a wire: click to add points, `Space` flips the bend, double-click 
 Holding `Shift` during move, copy or stretch locks the motion to one axis. Press `?` in the app for the full sheet.
 
 Commands work like a layout editor: they stay armed until `Esc`, and both *click, move, click* and *press, drag, release* work.
+Area zoom (`Z`, as in Virtuoso) can be used in the middle of another command, e.g. while routing a wire.
 
 ## Development
 
@@ -81,7 +91,7 @@ Pushing to `main` builds and publishes the site with GitHub Actions
 ## Roadmap
 
 1. ~~Basic editing: boxes, wires, styles, hotkeys, stretch, SVG save / open~~
-2. Hardware macros: MUX with any number of inputs, ALU, register / flip-flop, adder; ports that wires snap to; wire labels
+2. ~~Hardware macros: MUX with any number of inputs, ALU, register / flip-flop, adder; ports that wires snap to; wire labels~~
 3. Smarter import: recognise MUX / ALU shapes in AI-drawn SVGs
 4. Published format spec for AI tools, PDF export, user-defined macros
 

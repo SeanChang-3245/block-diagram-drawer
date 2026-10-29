@@ -1,9 +1,11 @@
 // Toolbars, status bar and the shortcut sheet around the canvas.
 
-import { useStore, type ToolName } from '../store';
+import { useStore, type Placeable, type ToolName } from '../store';
 import { LINE_PRESETS } from '../model/presets';
-import { armTool } from '../tools/interaction';
-import { applyPreset, exportPngFile, newFile, openFile, saveFile } from './commands';
+import { MACRO_TEMPLATES } from '../model/macros';
+import { armTool, makePlaceable } from '../tools/interaction';
+import { ShapeView } from '../render/ShapeView';
+import { applyPreset, choosePlaceable, exportPngFile, newFile, openFile, openMacroPicker, saveFile } from './commands';
 import { fitView } from './viewOps';
 
 const ICONS: Record<ToolName, JSX.Element> = {
@@ -25,6 +27,7 @@ const ICONS: Record<ToolName, JSX.Element> = {
       <rect x="8" y="8" width="11" height="11" fill="var(--panel)" stroke="currentColor" strokeWidth="1.6" />
     </>
   ),
+  place: <path d="M6 3 L16 7 L16 15 L6 19 Z" fill="none" stroke="currentColor" strokeWidth="1.8" />,
   stretch: (
     <>
       <rect x="3" y="6" width="9" height="10" fill="none" stroke="currentColor" strokeWidth="1.6" strokeDasharray="2 2" />
@@ -40,6 +43,7 @@ const TOOLS: { tool: ToolName; key: string; label: string }[] = [
   { tool: 'wire', key: 'W', label: 'Wire' },
   { tool: 'bus', key: 'B', label: 'Bus' },
   { tool: 'text', key: 'L', label: 'Label' },
+  { tool: 'place', key: 'I', label: 'Macro (MUX, ALU, register, ...)' },
   { tool: 'move', key: 'M', label: 'Move' },
   { tool: 'copy', key: 'C', label: 'Copy' },
   { tool: 'stretch', key: 'S', label: 'Stretch' },
@@ -50,7 +54,13 @@ export const ToolPalette = () => {
   return (
     <nav className="palette" aria-label="Tools">
       {TOOLS.map((t) => (
-        <button key={t.tool} type="button" className={tool === t.tool ? 'on' : ''} title={`${t.label} (${t.key})`} onClick={() => armTool(t.tool)}>
+        <button
+          key={t.tool}
+          type="button"
+          className={tool === t.tool ? 'on' : ''}
+          title={`${t.label} (${t.key})`}
+          onClick={() => (t.tool === 'place' ? openMacroPicker() : armTool(t.tool))}
+        >
           <svg width="22" height="22" viewBox="0 0 22 22">{ICONS[t.tool]}</svg>
           <span className="key">{t.key}</span>
         </button>
@@ -107,6 +117,8 @@ export const StatusBar = () => {
   const selCount = useStore((s) => s.selection.length);
   const set = useStore((s) => s.set);
   const showWireOpts = tool === 'wire' || tool === 'bus';
+  const placing = useStore((s) => s.placing);
+  const muxInputs = useStore((s) => s.muxInputs);
   return (
     <footer className="status">
       <span className="mode">{tool.toUpperCase()}</span>
@@ -133,6 +145,18 @@ export const StatusBar = () => {
           )}
         </span>
       )}
+      {tool === 'place' && (
+        <span className="opts">
+          {PLACEABLES.find((p) => p.kind === placing)?.name}
+          {placing === 'mux' && (
+            <label className="inline">
+              Inputs
+              <input type="number" min={2} value={muxInputs} onChange={(e) => set({ muxInputs: Math.max(2, Math.round(Number(e.target.value) || 2)) })} />
+            </label>
+          )}
+          <button type="button" onClick={openMacroPicker}>Change (I)</button>
+        </span>
+      )}
       <span className="spacer" />
       {selCount > 0 && <span>{selCount} selected</span>}
       <span className="coords">
@@ -149,7 +173,7 @@ const SHORTCUTS: [string, string][][] = [
     ['W', 'Wire'],
     ['B', 'Bus (wire + width mark)'],
     ['L', 'Text label'],
-    ['I', 'Place macro (next milestone)'],
+    ['I', 'Place macro (MUX, ALU, register, ...)'],
     ['M', 'Move'],
     ['C', 'Copy'],
     ['S', 'Stretch edges / vertices'],
@@ -159,7 +183,8 @@ const SHORTCUTS: [string, string][][] = [
   [
     ['Q', 'Toggle properties panel'],
     ['F', 'Fit diagram to window'],
-    ['Z / Shift+Z', 'Zoom in / out'],
+    ['Z', 'Zoom into an area (drag or click 2 corners)'],
+    ['Shift+Z', 'Zoom out 2×'],
     ['U / Shift+U', 'Undo / redo'],
     ['1 2 3', 'Line style: datapath / control / exception'],
     ['G', 'Toggle grid'],
@@ -167,6 +192,8 @@ const SHORTCUTS: [string, string][][] = [
     ['Ctrl+S / Ctrl+O', 'Save / open SVG'],
     ['Ctrl+C / Ctrl+V', 'Copy / paste'],
     ['Ctrl+E', 'Export PNG'],
+    ['Ctrl+] / Ctrl+[', 'Bring forward / send backward'],
+    ['Ctrl+Shift+] / [', 'Bring to front / send to back'],
   ],
   [
     ['Space', 'While routing: flip the bend'],
@@ -176,6 +203,8 @@ const SHORTCUTS: [string, string][][] = [
     ['Wheel', 'Zoom at cursor'],
     ['Middle-drag / arrows', 'Pan'],
     ['Double-click box', 'Edit text (Ctrl+Enter to finish)'],
+    ['Drag a wire label', 'Slide it along the wire'],
+    ['Shift+R', 'Rotate selected macros 90°'],
   ],
 ];
 
@@ -216,4 +245,58 @@ export const HelpOverlay = () => {
 export const Toast = () => {
   const toast = useStore((s) => s.toast);
   return toast ? <div className="toast">{toast}</div> : null;
+};
+
+export const PLACEABLES: { kind: Placeable; key: string; name: string }[] = [
+  ...MACRO_TEMPLATES.map((t) => ({ kind: t.kind, key: t.key, name: t.name })),
+  { kind: 'pipe', key: 'p', name: 'Pipeline register' },
+];
+
+/** Picker opened by I: one key per macro, like a layout editor's instance form. */
+export const MacroPicker = () => {
+  const show = useStore((s) => s.showMacroPicker);
+  const muxInputs = useStore((s) => s.muxInputs);
+  const placing = useStore((s) => s.placing);
+  const set = useStore((s) => s.set);
+  if (!show) return null;
+  return (
+    <div className="help-backdrop" onClick={() => set({ showMacroPicker: false })}>
+      <div className="picker" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Place macro">
+        <div className="help-head">
+          <h2>Place macro</h2>
+          <span className="muted">press a key, or click</span>
+        </div>
+        <div className="picker-grid">
+          {PLACEABLES.map((p) => {
+            const made = makePlaceable(p.kind, { x: 0, y: 0 }, p.kind === 'mux' ? muxInputs : 2);
+            // The real pipeline register is very tall; preview a short one.
+            const shape = made.type === 'box' ? { ...made, h: 60 } : made;
+            const b = shape.type === 'box' || shape.type === 'macro' ? { w: shape.w, h: shape.h } : { w: 40, h: 40 };
+            const pad = 8;
+            return (
+              <button key={p.kind} type="button" className={placing === p.kind ? 'on' : ''} onClick={() => choosePlaceable(p.kind)}>
+                <svg width="64" height="64" viewBox={`${-pad} ${-pad} ${Math.max(b.w, b.h) + 2 * pad} ${Math.max(b.w, b.h) + 2 * pad}`} fontFamily="Helvetica, Arial, sans-serif">
+                  <ShapeView s={shape} />
+                </svg>
+                <span>
+                  <kbd>{p.key.toUpperCase()}</kbd> {p.name}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        <label className="inline picker-opt">
+          MUX inputs
+          <input
+            type="number"
+            min={2}
+            value={muxInputs}
+            onChange={(e) => set({ muxInputs: Math.max(2, Math.round(Number(e.target.value) || 2)) })}
+            onKeyDown={(e) => e.stopPropagation()}
+          />
+          <span className="muted">any number, not just powers of two; type digits here or press 2-9</span>
+        </label>
+      </div>
+    </div>
+  );
 };

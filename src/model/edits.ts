@@ -4,7 +4,8 @@
 
 import { GRID } from './presets';
 import { distToSegment, isHorizontal, isVertical, rectContains, rectInside, shapeBounds, simplifyPolyline, type Rect } from './geometry';
-import { newId, type BoxShape, type Doc, type Pt, type Shape, type WireShape } from './types';
+import { minMacroSize, portPosition, macroPorts, quantizeMacro } from './macros';
+import { newId, type BoxShape, type Doc, type MacroShape, type PortRef, type Pt, type Shape, type WireShape } from './types';
 
 export interface Edges {
   l: boolean;
@@ -30,6 +31,7 @@ const MIN_BOX = GRID;
 const translateShape = (s: Shape, dx: number, dy: number): Shape => {
   switch (s.type) {
     case 'box':
+    case 'macro':
     case 'text':
     case 'dot':
       return { ...s, x: s.x + dx, y: s.y + dy };
@@ -40,65 +42,163 @@ const translateShape = (s: Shape, dx: number, dy: number): Shape => {
   }
 };
 
-const stretchBox = (b: BoxShape, e: Edges, dx: number, dy: number): BoxShape => {
+type RectShape = BoxShape | MacroShape;
+
+export const isRectShape = (s: Shape | undefined): s is RectShape => s?.type === 'box' || s?.type === 'macro';
+
+const stretchRect = <T extends RectShape>(b: T, e: Edges, dx: number, dy: number): T => {
+  const min = b.type === 'macro' ? minMacroSize(b) : { w: MIN_BOX, h: MIN_BOX };
   let { x, y, w, h } = b;
   if (e.l && e.r) x += dx;
   else if (e.l) {
-    const d = Math.min(dx, w - MIN_BOX);
+    const d = Math.min(dx, w - min.w);
     x += d;
     w -= d;
-  } else if (e.r) w = Math.max(MIN_BOX, w + dx);
+  } else if (e.r) w = Math.max(min.w, w + dx);
   if (e.t && e.b) y += dy;
   else if (e.t) {
-    const d = Math.min(dy, h - MIN_BOX);
+    const d = Math.min(dy, h - min.h);
     y += d;
     h -= d;
-  } else if (e.b) h = Math.max(MIN_BOX, h + dy);
-  return { ...b, x, y, w, h };
+  } else if (e.b) h = Math.max(min.h, h + dy);
+  const out = { ...b, x, y, w, h };
+  // Macros snap to sizes that keep their ports on the grid.
+  return out.type === 'macro' && !(e.l && e.r && e.t && e.b) ? (quantizeMacro(out, e.l && !e.r, e.t && !e.b) as T) : out;
+};
+
+/**
+ * Put vertices at new positions. Unmoved interior neighbours slide so segments
+ * stay orthogonal; wire ends never slide (they may be attached to something),
+ * so a segment ending there gets a Z bend instead.
+ */
+const placeWirePoints = (w: WireShape, placed: Map<number, Pt>): WireShape => {
+  const orig = w.points;
+  const last = orig.length - 1;
+  const pts = orig.map((p, i) => ({ ...(placed.get(i) ?? p) }));
+  for (const i of placed.keys()) {
+    for (const j of [i - 1, i + 1]) {
+      if (j <= 0 || j >= last || placed.has(j)) continue;
+      if (isHorizontal(orig[i], orig[j])) pts[j].y = pts[i].y;
+      else if (isVertical(orig[i], orig[j])) pts[j].x = pts[i].x;
+    }
+  }
+  const out: Pt[] = [pts[0]];
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i];
+    if (isHorizontal(orig[i - 1], orig[i]) && a.y !== b.y) {
+      const mx = (a.x + b.x) / 2;
+      out.push({ x: mx, y: a.y }, { x: mx, y: b.y });
+    } else if (isVertical(orig[i - 1], orig[i]) && a.x !== b.x) {
+      const my = (a.y + b.y) / 2;
+      out.push({ x: a.x, y: my }, { x: b.x, y: my });
+    }
+    out.push(b);
+  }
+  return { ...w, points: out };
 };
 
 /** Move some vertices; their unmoved neighbours slide so segments stay orthogonal. */
 export const moveWirePoints = (w: WireShape, moves: WirePointMove[], dx: number, dy: number): WireShape => {
-  const orig = w.points;
-  const pts = orig.map((p) => ({ ...p }));
   const moved = new Map<number, WirePointMove>();
   for (const m of moves) {
     const prev = moved.get(m.i);
     moved.set(m.i, prev ? { i: m.i, mx: (prev.mx | m.mx) as 0 | 1, my: (prev.my | m.my) as 0 | 1 } : m);
   }
-  for (const m of moved.values()) {
-    pts[m.i] = { x: orig[m.i].x + dx * m.mx, y: orig[m.i].y + dy * m.my };
-  }
-  for (const m of moved.values()) {
-    for (const j of [m.i - 1, m.i + 1]) {
-      if (j < 0 || j >= orig.length || moved.has(j)) continue;
-      if (isHorizontal(orig[m.i], orig[j])) pts[j].y = pts[m.i].y;
-      else if (isVertical(orig[m.i], orig[j])) pts[j].x = pts[m.i].x;
+  const placed = new Map<number, Pt>();
+  for (const m of moved.values()) placed.set(m.i, { x: w.points[m.i].x + dx * m.mx, y: w.points[m.i].y + dy * m.my });
+  return placeWirePoints(w, placed);
+};
+
+/**
+ * Snap wire ends that are attached to macro ports back onto those ports, e.g.
+ * after the macro moved, was stretched or changed its number of inputs.
+ * `skip` holds "wireId:start" / "wireId:end" for ends the user is dragging right now.
+ */
+export const syncConnections = (doc: Doc, skip: Set<string> = new Set()): Doc => {
+  let shapes: Doc['shapes'] | null = null;
+  for (const id of doc.order) {
+    const w = doc.shapes[id];
+    if (w?.type !== 'wire' || (!w.from && !w.to)) continue;
+    const placed = new Map<number, Pt>();
+    let { from, to } = w;
+    const ends: [PortRef | undefined, number, 'from' | 'to'][] = [[from, 0, 'from'], [to, w.points.length - 1, 'to']];
+    for (const [ref, i, which] of ends) {
+      if (!ref || skip.has(`${id}:${which === 'from' ? 'start' : 'end'}`)) continue;
+      const m = doc.shapes[ref.id];
+      const p = m?.type === 'macro' ? portPosition(m, ref.port) : null;
+      if (!p) {
+        // Macro or port is gone: the wire end stays where it is, unattached.
+        if (which === 'from') from = undefined;
+        else to = undefined;
+        continue;
+      }
+      if (p.x !== w.points[i].x || p.y !== w.points[i].y) placed.set(i, p);
     }
+    if (!placed.size && from === w.from && to === w.to) continue;
+    shapes ??= { ...doc.shapes };
+    shapes[id] = { ...placeWirePoints(w, placed), from, to };
   }
-  return { ...w, points: pts };
+  return shapes ? { ...doc, shapes } : doc;
+};
+
+/** Port at exactly this point, if any. */
+export const portAt = (doc: Doc, p: Pt, tol = 0.5): PortRef | undefined => {
+  for (let i = doc.order.length - 1; i >= 0; i--) {
+    const m = doc.shapes[doc.order[i]];
+    if (m?.type !== 'macro') continue;
+    const hit = macroPorts(m).find((q) => Math.hypot(q.p.x - p.x, q.p.y - p.y) <= tol);
+    if (hit) return { id: m.id, port: hit.name };
+  }
+  return undefined;
+};
+
+/** Re-derive which ports a wire's ends are attached to from where they now are. */
+export const bindConnections = (doc: Doc, wireIds: Iterable<string>): Doc => {
+  const shapes = { ...doc.shapes };
+  for (const id of wireIds) {
+    const w = shapes[id];
+    if (w?.type !== 'wire' || w.points.length < 2) continue;
+    const from = portAt(doc, w.points[0]);
+    const to = portAt(doc, w.points[w.points.length - 1]);
+    const { from: _f, to: _t, ...rest } = w;
+    shapes[id] = { ...rest, ...(from ? { from } : {}), ...(to ? { to } : {}) };
+  }
+  return { ...doc, shapes };
 };
 
 export const applyTargets = (doc: Doc, targets: Target[], dx: number, dy: number): Doc => {
   const shapes = { ...doc.shapes };
+  const dragged = new Set<string>();
   for (const t of targets) {
     const s = shapes[t.id];
     if (!s) continue;
-    if (t.kind === 'move') shapes[t.id] = translateShape(s, dx, dy);
-    else if (t.kind === 'boxEdges' && s.type === 'box') shapes[t.id] = stretchBox(s, t.edges, dx, dy);
-    else if (t.kind === 'wirePoints' && s.type === 'wire') shapes[t.id] = moveWirePoints(s, t.pts, dx, dy);
+    if (t.kind === 'move') {
+      shapes[t.id] = translateShape(s, dx, dy);
+      if (s.type === 'wire') dragged.add(`${t.id}:start`).add(`${t.id}:end`);
+    } else if (t.kind === 'boxEdges' && isRectShape(s)) shapes[t.id] = stretchRect(s, t.edges, dx, dy);
+    else if (t.kind === 'wirePoints' && s.type === 'wire') {
+      shapes[t.id] = moveWirePoints(s, t.pts, dx, dy);
+      for (const q of t.pts) {
+        if (q.i === 0) dragged.add(`${t.id}:start`);
+        if (q.i === s.points.length - 1) dragged.add(`${t.id}:end`);
+      }
+    }
   }
-  return { ...doc, shapes };
+  return syncConnections({ ...doc, shapes }, dragged);
 };
 
-/** Tidy wires touched by a finished drag. */
+/** Tidy wires touched by a finished drag and record which ports their ends now sit on. */
 export const finalizeTargets = (doc: Doc, targets: Target[]): Doc => {
   const shapes = { ...doc.shapes };
+  const wires = new Set<string>();
   for (const t of targets) {
     const s = shapes[t.id];
-    if (s?.type === 'wire') shapes[t.id] = { ...s, points: simplifyPolyline(s.points) };
+    if (s?.type === 'wire') {
+      shapes[t.id] = { ...s, points: simplifyPolyline(s.points) };
+      wires.add(t.id);
+    }
   }
-  return { ...doc, shapes };
+  return bindConnections({ ...doc, shapes }, wires);
 };
 
 const onSegment = (p: Pt, a: Pt, b: Pt): boolean => distToSegment(p, a, b) < 0.01;
@@ -158,7 +258,7 @@ export const pickStretch = (doc: Doc, p: Pt, tol: number, prefer?: Set<string>):
   };
   for (const id of [...doc.order].reverse()) {
     const s = doc.shapes[id];
-    if (s.type === 'box') {
+    if (isRectShape(s)) {
       const dl = Math.abs(p.x - s.x), dr = Math.abs(p.x - s.x - s.w);
       const dt = Math.abs(p.y - s.y), db = Math.abs(p.y - s.y - s.h);
       const inY = p.y >= s.y - tol && p.y <= s.y + s.h + tol;
@@ -198,7 +298,7 @@ export const areaStretch = (doc: Doc, area: Rect): Target[] => {
   const targets: Target[] = [];
   for (const id of doc.order) {
     const s = doc.shapes[id];
-    if (s.type === 'box') {
+    if (isRectShape(s)) {
       const inX = (x: number) => x >= area.x && x <= area.x + area.w;
       const inY = (y: number) => y >= area.y && y <= area.y + area.h;
       const spanX = inX(s.x) && inX(s.x + s.w), spanY = inY(s.y) && inY(s.y + s.h);
@@ -253,17 +353,61 @@ export const duplicate = (doc: Doc, ids: string[], dx: number, dy: number): { do
   const shapes = { ...doc.shapes };
   const order = [...doc.order];
   const created: string[] = [];
+  const idMap = new Map<string, string>();
+  for (const id of doc.order) if (ids.includes(id)) idMap.set(id, newId());
   for (const id of doc.order) {
     if (!ids.includes(id)) continue;
     const src = doc.shapes[id];
-    const copy = translateShape({ ...src, id: newId() }, dx, dy);
+    const copy = translateShape({ ...src, id: idMap.get(id)! }, dx, dy);
     if (src.groupId) {
       if (!groupMap.has(src.groupId)) groupMap.set(src.groupId, newId('g'));
       copy.groupId = groupMap.get(src.groupId);
     }
-    shapes[copy.id] = copy;
+    if (copy.type === 'wire') {
+      // Copied wires stay attached only to macros copied along with them.
+      const remap = (r?: PortRef) => (r && idMap.has(r.id) ? { id: idMap.get(r.id)!, port: r.port } : undefined);
+      const { from, to, ...rest } = copy;
+      const f = remap(from), t = remap(to);
+      shapes[copy.id] = { ...rest, ...(f ? { from: f } : {}), ...(t ? { to: t } : {}) };
+    } else shapes[copy.id] = copy;
     order.push(copy.id);
     created.push(copy.id);
   }
   return { doc: { shapes, order }, ids: created };
+};
+
+export type Arrange = 'front' | 'back' | 'forward' | 'backward';
+
+const overlaps = (a: Rect, b: Rect) => a.x <= b.x + b.w && b.x <= a.x + a.w && a.y <= b.y + b.h && b.y <= a.y + a.h;
+
+/**
+ * Change stacking order. Forward / backward step past the next shape that
+ * actually overlaps the selection, so every keypress has a visible effect.
+ */
+export const arrange = (doc: Doc, ids: string[], how: Arrange): Doc => {
+  const sel = new Set(ids.filter((id) => doc.shapes[id]));
+  if (!sel.size) return doc;
+  const picked = doc.order.filter((id) => sel.has(id));
+  const rest = doc.order.filter((id) => !sel.has(id));
+  if (how === 'front') return { ...doc, order: [...rest, ...picked] };
+  if (how === 'back') return { ...doc, order: [...picked, ...rest] };
+
+  const bounds = picked.map((id) => shapeBounds(doc.shapes[id]));
+  const hits = (id: string) => bounds.some((b) => overlaps(b, shapeBounds(doc.shapes[id])));
+  const idx = picked.map((id) => doc.order.indexOf(id));
+  let insertAt: number; // position in `rest` the selection goes before
+  if (how === 'forward') {
+    const top = Math.max(...idx);
+    const above = doc.order.slice(top + 1).filter((id) => !sel.has(id));
+    const next = above.find(hits) ?? above[above.length - 1];
+    if (!next) return doc;
+    insertAt = rest.indexOf(next) + 1;
+  } else {
+    const bottom = Math.min(...idx);
+    const below = doc.order.slice(0, bottom).filter((id) => !sel.has(id));
+    const next = [...below].reverse().find(hits) ?? below[0];
+    if (!next) return doc;
+    insertAt = rest.indexOf(next);
+  }
+  return { ...doc, order: [...rest.slice(0, insertAt), ...picked, ...rest.slice(insertAt)] };
 };

@@ -2,8 +2,10 @@
 // you see is exactly what gets saved.
 
 import { DASH_ARRAY } from '../model/presets';
-import { busMarkPosition } from '../model/geometry';
-import type { BoxShape, Doc, Shape, WireShape } from '../model/types';
+import { busMarkPosition, wireLabelLayout, WIRE_LABEL_SIZE } from '../model/geometry';
+import { macroGeometry } from '../model/macros';
+import { findJunctions } from '../model/junctions';
+import type { BoxShape, Doc, MacroShape, Shape, WireShape } from '../model/types';
 
 export const markerId = (color: string): string => `bdd-arrow-${color.replace(/[^a-zA-Z0-9]/g, '')}`;
 
@@ -102,7 +104,54 @@ const WireView = ({ s }: { s: WireShape }) => (
       markerStart={s.arrowStart ? `url(#${markerId(s.stroke.color)})` : undefined}
     />
     <BusMark s={s} />
+    <WireLabel s={s} />
   </>
+);
+
+const WireLabel = ({ s }: { s: WireShape }) => {
+  const l = wireLabelLayout(s);
+  if (!l) return null;
+  return (
+    <text x={l.x} y={l.y} fontSize={WIRE_LABEL_SIZE} textAnchor={l.anchor} fill={s.stroke.color}>
+      {s.label}
+    </text>
+  );
+};
+
+const MacroView = ({ s }: { s: MacroShape }) => {
+  const g = macroGeometry(s);
+  const common = {
+    fill: s.fill,
+    stroke: s.stroke.color,
+    strokeWidth: s.stroke.width,
+    strokeDasharray: DASH_ARRAY[s.stroke.dash],
+  };
+  return (
+    <>
+      {g.outline.kind === 'circle' ? (
+        <circle cx={g.outline.c.x} cy={g.outline.c.y} r={g.outline.r} {...common} />
+      ) : (
+        <path d={'M' + g.outline.pts.map((p) => `${p.x},${p.y}`).join(' L') + ' Z'} strokeLinejoin="miter" {...common} />
+      )}
+      {g.marks.map((m, i) => (
+        <polyline key={i} points={m.map((p) => `${p.x},${p.y}`).join(' ')} fill="none" stroke={s.stroke.color} strokeWidth={s.stroke.width * 0.8} />
+      ))}
+      {g.texts.map((t, i) => (
+        <text key={i} x={t.p.x} y={t.p.y} fontSize={t.size} textAnchor={t.anchor} fontWeight={t.bold ? 'bold' : 'normal'} fill={s.textColor}>
+          {t.text}
+        </text>
+      ))}
+    </>
+  );
+};
+
+/** Auto junction dots, drawn above all shapes. Not part of the model. */
+export const JunctionDots = ({ doc }: { doc: Doc }) => (
+  <g data-bdd-derived="junctions">
+    {findJunctions(doc).map((j, i) => (
+      <circle key={i} cx={j.p.x} cy={j.p.y} r={j.r} fill={j.color} />
+    ))}
+  </g>
 );
 
 const ShapeBody = ({ s }: { s: Shape }) => {
@@ -111,6 +160,8 @@ const ShapeBody = ({ s }: { s: Shape }) => {
       return <BoxView s={s} />;
     case 'wire':
       return <WireView s={s} />;
+    case 'macro':
+      return <MacroView s={s} />;
     case 'text':
       return (
         <text x={s.x} y={s.y} fontSize={s.fontSize} textAnchor={s.anchor} fontWeight={s.bold ? 'bold' : 'normal'} fill={s.color}>

@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useStore } from './store';
 import { Canvas } from './ui/Canvas';
-import { HelpOverlay, StatusBar, Toast, ToolPalette, TopBar } from './ui/Chrome';
+import { HelpOverlay, MacroPicker, StatusBar, Toast, ToolPalette, TopBar } from './ui/Chrome';
 import { PropsPanel } from './ui/PropsPanel';
 import { onKeyDown } from './ui/commands';
 import { openDroppedFile } from './io/files';
@@ -39,6 +39,7 @@ export const App = () => {
       </div>
       <StatusBar />
       <HelpOverlay />
+      <MacroPicker />
       <Toast />
     </div>
   );

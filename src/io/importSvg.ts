@@ -190,7 +190,7 @@ const walk = (el: Element, ctx: ImportCtx): void => {
       // malformed model: fall back to the visible markup below
     }
   }
-  if (el.hasAttribute('data-bdd-bg')) return;
+  if (el.hasAttribute('data-bdd-bg') || el.hasAttribute('data-bdd-derived')) return;
   if (el.hasAttribute('transform') && tag !== 'svg') return keepRaw(el, ctx);
 
   switch (tag) {

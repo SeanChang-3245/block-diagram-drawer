@@ -1,6 +1,9 @@
 import { useStore } from '../store';
 import { LINE_PRESETS } from '../model/presets';
-import type { BoxShape, Dash, DotShape, Shape, Stroke, TextAnchor, TextShape, WireShape } from '../model/types';
+import { DEFAULT_LABEL_POS } from '../model/geometry';
+import { flowSize } from '../model/macros';
+import { arrangeSelection, rotateSelection } from './commands';
+import type { BoxShape, Dash, Direction, DotShape, MacroShape, Shape, Stroke, TextAnchor, TextShape, WireShape } from '../model/types';
 
 let colorCtx: CanvasRenderingContext2D | null = null;
 /** Normalize any CSS color to #rrggbb for <input type="color">. */
@@ -133,7 +136,147 @@ const WireFields = ({ first, patch }: { first: WireShape; patch: Patch<WireShape
     <Row label="Bus width">
       <Num value={first.busWidth} min={1} onChange={(busWidth) => patch((s) => ({ ...s, busWidth: Math.max(1, Math.round(busWidth)) }), 'bus')} />
     </Row>
+    <Row label="Label">
+      <input type="text" value={first.label ?? ''} placeholder="signal name" onChange={(e) => patch((s) => ({ ...s, label: e.target.value }), 'wire-label')} />
+    </Row>
+    {first.label && (
+      <Row label="Label at">
+        <input
+          type="range"
+          min={0}
+          max={1}
+          step={0.01}
+          value={first.labelPos ?? DEFAULT_LABEL_POS}
+          onChange={(e) => patch((s) => ({ ...s, labelPos: Number(e.target.value) }), 'wire-label-pos')}
+        />
+      </Row>
+    )}
+    {(first.from || first.to) && (
+      <p className="muted small">
+        Attached to {[first.from && `${first.from.port} (start)`, first.to && `${first.to.port} (end)`].filter(Boolean).join(', ')}. Ends follow the macro.
+      </p>
+    )}
   </>
+);
+
+const DIRS: { d: Direction; label: string }[] = [
+  { d: 'right', label: '→' },
+  { d: 'down', label: '↓' },
+  { d: 'left', label: '←' },
+  { d: 'up', label: '↑' },
+];
+
+const MacroFields = ({ first, patch }: { first: MacroShape; patch: Patch<MacroShape> }) => {
+  const { L, T } = flowSize(first);
+  return (
+    <>
+      {first.kind === 'mux' && (
+        <>
+          <Row label="Inputs">
+            <Num
+              value={first.inputs}
+              min={2}
+              onChange={(v) =>
+                patch((s) => {
+                  const inputs = Math.max(2, Math.round(v));
+                  // Keep 20 units per input so the input ports stay on the grid.
+                  const across = Math.max(inputs * 20, flowSize(s).T * (inputs / s.inputs) || inputs * 20);
+                  const t = Math.round(across / 20) * 20;
+                  return s.dir === 'right' || s.dir === 'left' ? { ...s, inputs, h: t } : { ...s, inputs, w: t };
+                }, 'mux-n')
+              }
+            />
+            <Toggle label="show 0..N-1" value={first.showIndices} onChange={(showIndices) => patch((s) => ({ ...s, showIndices }))} />
+          </Row>
+        </>
+      )}
+      {(first.kind === 'mux' || first.kind === 'alu' || first.kind === 'op') && (
+        <Row label={first.kind === 'mux' ? 'Select pin' : first.kind === 'alu' ? 'Op pin' : '2nd input'}>
+          <div className="seg">
+            {(['top', 'bottom'] as const).map((side) => (
+              <button key={side} type="button" className={first.ctrlSide === side ? 'on' : ''} onClick={() => patch((s) => ({ ...s, ctrlSide: side }))}>
+                {side}
+              </button>
+            ))}
+          </div>
+        </Row>
+      )}
+      {first.kind === 'reg' && (
+        <Row label="Pins">
+          <Toggle label="enable" value={first.enable} onChange={(enable) => patch((s) => ({ ...s, enable }))} />
+          <Toggle label="reset" value={first.reset} onChange={(reset) => patch((s) => ({ ...s, reset }))} />
+        </Row>
+      )}
+      {first.kind === 'op' ? (
+        <Row label="Symbol">
+          <div className="seg">
+            {['+', '−', '×', '⊕', '&', '|', '='].map((sym) => (
+              <button key={sym} type="button" className={first.symbol === sym ? 'on' : ''} onClick={() => patch((s) => ({ ...s, symbol: sym }))}>
+                {sym}
+              </button>
+            ))}
+          </div>
+        </Row>
+      ) : (
+        <>
+          <Row label="Label">
+            <textarea rows={2} value={first.label} onChange={(e) => patch((s) => ({ ...s, label: e.target.value }), 'macro-label')} />
+          </Row>
+          <Row label="Font size">
+            <Num value={first.fontSize} min={4} onChange={(fontSize) => patch((s) => ({ ...s, fontSize }), 'macro-fs')} />
+          </Row>
+        </>
+      )}
+      <Row label="Flow">
+        <div className="seg">
+          {DIRS.map(({ d, label }) => (
+            <button
+              key={d}
+              type="button"
+              className={first.dir === d ? 'on' : ''}
+              title={d}
+              onClick={() =>
+                patch((s) => {
+                  const wasHorizontal = s.dir === 'right' || s.dir === 'left';
+                  const isHorizontal = d === 'right' || d === 'left';
+                  return wasHorizontal === isHorizontal ? { ...s, dir: d } : { ...s, dir: d, w: s.h, h: s.w };
+                })
+              }
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <button type="button" title="Rotate 90° (Shift+R)" onClick={rotateSelection}>⟳</button>
+      </Row>
+      <Row label="Fill">
+        <Color value={first.fill} allowNone onChange={(fill) => patch((s) => ({ ...s, fill }), 'macro-fill')} />
+      </Row>
+      <StrokeFields first={first} patch={patch} label="Border" />
+      <Row label="X / Y">
+        <Num value={first.x} onChange={(x) => patch((s) => ({ ...s, x }), 'macro-x')} />
+        <Num value={first.y} onChange={(y) => patch((s) => ({ ...s, y }), 'macro-y')} />
+      </Row>
+      <Row label="Length / width">
+        <span className="muted small">
+          {L} × {T}
+        </span>
+        <span className="muted small">(stretch with S)</span>
+      </Row>
+    </>
+  );
+};
+
+const ArrangeRow = () => (
+  <section>
+    <h4>Arrange</h4>
+    <div className="seg arrange">
+      <button type="button" title="Bring to front (Ctrl+Shift+])" onClick={() => arrangeSelection('front')}>Front</button>
+      <button type="button" title="Bring forward (Ctrl+])" onClick={() => arrangeSelection('forward')}>Forward</button>
+      <button type="button" title="Send backward (Ctrl+[)" onClick={() => arrangeSelection('backward')}>Backward</button>
+      <button type="button" title="Send to back (Ctrl+Shift+[)" onClick={() => arrangeSelection('back')}>Back</button>
+    </div>
+  </section>
 );
 
 const TextFields = ({ first, patch }: { first: TextShape; patch: Patch<TextShape> }) => (
@@ -171,7 +314,8 @@ const DotFields = ({ first, patch }: { first: DotShape; patch: Patch<DotShape> }
   </>
 );
 
-const TITLES: Record<Shape['type'], string> = { box: 'Box', wire: 'Wire', text: 'Label', dot: 'Junction', raw: 'Imported element' };
+const TITLES: Record<Shape['type'], string> = { box: 'Box', wire: 'Wire', text: 'Label', dot: 'Junction', raw: 'Imported element', macro: 'Macro' };
+const MACRO_TITLES: Record<MacroShape['kind'], string> = { mux: 'MUX', alu: 'ALU', reg: 'Register', op: 'Operator' };
 
 export const PropsPanel = () => {
   const doc = useStore((s) => s.doc);
@@ -202,17 +346,19 @@ export const PropsPanel = () => {
         return (
           <section key={type}>
             <h4>
-              {TITLES[type]}
+              {first.type === 'macro' && list.every((m) => m.type === 'macro' && m.kind === first.kind) ? MACRO_TITLES[first.kind] : TITLES[type]}
               {list.length > 1 ? ` ×${list.length}` : ''}
             </h4>
             {first.type === 'box' && <BoxFields first={first} patch={patch as Patch<BoxShape>} />}
             {first.type === 'wire' && <WireFields first={first} patch={patch as Patch<WireShape>} />}
             {first.type === 'text' && <TextFields first={first} patch={patch as Patch<TextShape>} />}
             {first.type === 'dot' && <DotFields first={first} patch={patch as Patch<DotShape>} />}
+            {first.type === 'macro' && <MacroFields first={first} patch={patch as Patch<MacroShape>} />}
             {first.type === 'raw' && <p className="muted">Kept exactly as it was in the imported file. You can move, copy or delete it.</p>}
           </section>
         );
       })}
+      <ArrangeRow />
     </aside>
   );
 };

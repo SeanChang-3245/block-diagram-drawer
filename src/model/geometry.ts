@@ -1,5 +1,5 @@
 import { FONT_FAMILY } from './presets';
-import type { Pt, Shape, TextShape } from './types';
+import type { Pt, Shape, TextShape, WireShape } from './types';
 
 export interface Rect {
   x: number;
@@ -64,6 +64,7 @@ export const textBounds = (t: TextShape): Rect => {
 export const shapeBounds = (s: Shape): Rect => {
   switch (s.type) {
     case 'box':
+    case 'macro':
       return { x: s.x, y: s.y, w: s.w, h: s.h };
     case 'wire': {
       const xs = s.points.map((p) => p.x);
@@ -139,4 +140,65 @@ export const busMarkPosition = (pts: Pt[]): { p: Pt; horizontal: boolean } | nul
     return { p: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, horizontal: Math.abs(b.x - a.x) >= Math.abs(b.y - a.y) };
   }
   return null;
+};
+
+export const polylineLength = (pts: Pt[]): number => {
+  let len = 0;
+  for (let i = 0; i + 1 < pts.length; i++) len += Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y);
+  return len;
+};
+
+/** Point at fraction t (0..1) of the polyline's length, with the direction of that segment. */
+export const pointAlong = (pts: Pt[], t: number): { p: Pt; horizontal: boolean } => {
+  const total = polylineLength(pts);
+  let left = Math.max(0, Math.min(1, t)) * total;
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const a = pts[i], b = pts[i + 1];
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (len === 0) continue;
+    if (left <= len || i + 2 === pts.length) {
+      const f = Math.min(1, left / len);
+      return { p: { x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f }, horizontal: Math.abs(b.x - a.x) >= Math.abs(b.y - a.y) };
+    }
+    left -= len;
+  }
+  return { p: pts[0] ?? { x: 0, y: 0 }, horizontal: true };
+};
+
+/** Fraction along the polyline of the point closest to p. */
+export const projectOnto = (pts: Pt[], p: Pt): number => {
+  const total = polylineLength(pts);
+  if (total === 0) return 0;
+  let best = Infinity, bestAt = 0, walked = 0;
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const a = pts[i], b = pts[i + 1];
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const len = Math.hypot(dx, dy);
+    if (len === 0) continue;
+    const f = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (len * len)));
+    const d = Math.hypot(p.x - (a.x + f * dx), p.y - (a.y + f * dy));
+    if (d < best) {
+      best = d;
+      bestAt = walked + f * len;
+    }
+    walked += len;
+  }
+  return bestAt / total;
+};
+
+export const WIRE_LABEL_SIZE = 10;
+export const DEFAULT_LABEL_POS = 0.25;
+
+/** Where a wire's label is drawn: above horizontal runs, right of vertical ones. */
+export const wireLabelLayout = (w: WireShape): { x: number; y: number; anchor: 'middle' | 'start'; bounds: Rect } | null => {
+  if (!w.label || w.points.length < 2) return null;
+  const { p, horizontal } = pointAlong(w.points, w.labelPos ?? DEFAULT_LABEL_POS);
+  const fs = WIRE_LABEL_SIZE;
+  const width = measureText(w.label, fs);
+  if (horizontal) {
+    const y = p.y - 4;
+    return { x: p.x, y, anchor: 'middle', bounds: { x: p.x - width / 2, y: y - fs * 0.8, w: width, h: fs } };
+  }
+  const x = p.x + 4, y = p.y + fs * 0.35;
+  return { x, y, anchor: 'start', bounds: { x, y: y - fs * 0.8, w: width, h: fs } };
 };

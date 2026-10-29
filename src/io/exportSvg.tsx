@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { FONT_FAMILY } from '../model/presets';
 import { shapeBounds, unionRects } from '../model/geometry';
 import type { Doc } from '../model/types';
-import { ArrowMarkers, ShapeView } from '../render/ShapeView';
+import { ArrowMarkers, JunctionDots, ShapeView } from '../render/ShapeView';
 
 export const FORMAT_VERSION = '1';
 const MARGIN = 20;
@@ -28,6 +28,7 @@ export const exportSvg = (doc: Doc): string => {
       {shapes.map((s) => (
         <ShapeView key={s.id} s={s} embedModel />
       ))}
+      <JunctionDots doc={doc} />
     </svg>,
   );
   return `<?xml version="1.0" encoding="UTF-8"?>\n${markup.replace(/(<\/g>|<\/defs>|<rect data-bdd-bg[^>]*\/>)</g, '$1\n<')}\n`;

@@ -2,8 +2,9 @@ import { useEffect, useRef } from 'react';
 import { useStore, useVisibleDoc, type View } from '../store';
 import { GRID, FONT_FAMILY } from '../model/presets';
 import { shapeBounds } from '../model/geometry';
+import { macroPorts } from '../model/macros';
 import type { Pt, Shape } from '../model/types';
-import { ArrowMarkers, ShapeView } from '../render/ShapeView';
+import { ArrowMarkers, JunctionDots, ShapeView } from '../render/ShapeView';
 import { doubleClick, pointerDown, pointerMove, pointerUp } from '../tools/interaction';
 import { TextEditor } from './TextEditor';
 
@@ -79,7 +80,7 @@ const Overlays = ({ zoom }: { zoom: number }) => {
   const h = overlay.hover;
   if (h) {
     const s = doc.shapes[h.id];
-    if (s?.type === 'box' && h.kind === 'box') {
+    if ((s?.type === 'box' || s?.type === 'macro') && h.kind === 'box') {
       const { x, y, w, h: hh } = s;
       const segs: [number, number, number, number][] = [];
       if (h.edges.l) segs.push([x, y, x, y + hh]);
@@ -99,7 +100,37 @@ const Overlays = ({ zoom }: { zoom: number }) => {
       out.push(<rect key="hs" x={b.x} y={b.y} width={b.w} height={b.h} fill="none" stroke={HOVER} strokeWidth={2 / zoom} />);
     }
   }
+  if (overlay.ghost) {
+    out.push(
+      <g key="ghost" opacity={0.55}>
+        <ShapeView s={overlay.ghost} />
+      </g>,
+    );
+  }
+  if (overlay.port) {
+    out.push(<circle key="port" cx={overlay.port.x} cy={overlay.port.y} r={5 / zoom} fill="none" stroke={HOVER} strokeWidth={2 / zoom} />);
+  }
   return <g pointerEvents="none">{out}</g>;
+};
+
+/** Port markers on every macro while a wire command is active. */
+const PortMarks = ({ zoom }: { zoom: number }) => {
+  const doc = useVisibleDoc();
+  const tool = useStore((s) => s.tool);
+  const selection = useStore((s) => s.selection);
+  const wiring = tool === 'wire' || tool === 'bus';
+  const r = 2.5 / zoom;
+  return (
+    <g pointerEvents="none">
+      {doc.order.map((id) => {
+        const m = doc.shapes[id];
+        if (m?.type !== 'macro' || (!wiring && !selection.includes(id))) return null;
+        return macroPorts(m).map((p) => (
+          <rect key={`${id}:${p.name}`} x={p.p.x - r} y={p.p.y - r} width={2 * r} height={2 * r} fill="#fff" stroke={SEL} strokeWidth={1 / zoom} />
+        ));
+      })}
+    </g>
+  );
 };
 
 const Grid = ({ view, w, h }: { view: View; w: number; h: number }) => {
@@ -214,9 +245,11 @@ export const Canvas = () => {
         <g transform={`scale(${view.zoom}) translate(${-view.x},${-view.y})`}>
           <ArrowMarkers doc={doc} />
           {doc.order.map((id) => doc.shapes[id] && <ShapeView key={id} s={doc.shapes[id]} />)}
+          <JunctionDots doc={doc} />
           {selected.map((s) => (
             <SelectionMark key={s.id} s={s} zoom={view.zoom} />
           ))}
+          <PortMarks zoom={view.zoom} />
           <Overlays zoom={view.zoom} />
         </g>
       </svg>

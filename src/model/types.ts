@@ -43,6 +43,18 @@ export interface WireShape extends ShapeBase {
   arrowEnd: boolean;
   /** Bus width in bits; drawn as a slash plus number when > 1. */
   busWidth: number;
+  /** Signal name drawn along the wire. */
+  label?: string;
+  /** Where the label sits, as a fraction (0..1) of the wire's length. */
+  labelPos?: number;
+  /** Macro ports the endpoints are attached to; they follow the macro. */
+  from?: PortRef;
+  to?: PortRef;
+}
+
+export interface PortRef {
+  id: string;
+  port: string;
 }
 
 export type TextAnchor = 'start' | 'middle' | 'end';
@@ -68,6 +80,38 @@ export interface DotShape extends ShapeBase {
   color: string;
 }
 
+export type MacroKind = 'mux' | 'alu' | 'reg' | 'op';
+
+/** Direction signals flow through a macro: inputs on the upstream side. */
+export type Direction = 'right' | 'left' | 'down' | 'up';
+
+/** Parameterised hardware symbol. Parameters a kind does not use are ignored. */
+export interface MacroShape extends ShapeBase {
+  type: 'macro';
+  kind: MacroKind;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  dir: Direction;
+  fill: string;
+  stroke: Stroke;
+  label: string;
+  fontSize: number;
+  textColor: string;
+  /** mux: number of data inputs (any integer >= 2). */
+  inputs: number;
+  /** mux select / alu op port: on the top or bottom side (relative to flow). */
+  ctrlSide: 'top' | 'bottom';
+  /** mux: print 0..N-1 next to the inputs. */
+  showIndices: boolean;
+  /** reg: optional enable / reset pins. */
+  enable: boolean;
+  reset: boolean;
+  /** op: symbol drawn in the circle (+, ×, ⊕, ...). */
+  symbol: string;
+}
+
 /** Imported SVG markup we don't understand; kept verbatim and movable. */
 export interface RawShape extends ShapeBase {
   type: 'raw';
@@ -78,7 +122,7 @@ export interface RawShape extends ShapeBase {
   bbox: { x: number; y: number; w: number; h: number };
 }
 
-export type Shape = BoxShape | WireShape | TextShape | DotShape | RawShape;
+export type Shape = BoxShape | WireShape | TextShape | DotShape | RawShape | MacroShape;
 export type ShapeType = Shape['type'];
 
 export interface Doc {

@@ -1,8 +1,8 @@
-import { useStore } from '../store';
+import { useStore, type Placeable } from '../store';
 import { LINE_PRESETS } from '../model/presets';
-import { duplicate, expandGroups } from '../model/edits';
-import { newId, type Doc } from '../model/types';
-import { armTool, enter, escape, isBusy, space } from '../tools/interaction';
+import { arrange, duplicate, expandGroups, syncConnections, type Arrange } from '../model/edits';
+import { newId, type Direction, type Doc } from '../model/types';
+import { armTool, enter, escape, isBusy, space, startZoomBox } from '../tools/interaction';
 import { exportPngFile, newFile, openFile, saveFile } from '../io/files';
 import { fitView, panBy, zoomBy } from './viewOps';
 
@@ -73,11 +73,56 @@ export const paste = () => {
   clipboard = { shapes: Object.fromEntries(dup.ids.map((id) => [id, dup.doc.shapes[id]])), order: dup.ids };
 };
 
+export const openMacroPicker = () => st().set({ showMacroPicker: true });
+
+export const choosePlaceable = (kind: Placeable) => {
+  st().set({ placing: kind, showMacroPicker: false });
+  armTool('place');
+};
+
+export const arrangeSelection = (how: Arrange) => {
+  const { doc, selection, commit, notify } = st();
+  const ids = expandGroups(doc, selection);
+  if (!ids.length) return notify('Select something to re-order.');
+  const next = arrange(doc, ids, how);
+  if (next.order.every((id, i) => id === doc.order[i])) return notify(how === 'front' || how === 'forward' ? 'Already in front' : 'Already at the back');
+  commit(next);
+};
+
+const CLOCKWISE: Record<Direction, Direction> = { right: 'down', down: 'left', left: 'up', up: 'right' };
+
+/** Turn selected macros a quarter turn clockwise about their centre. */
+export const rotateSelection = () => {
+  const { doc, selection, commit, notify } = st();
+  const shapes = { ...doc.shapes };
+  let n = 0;
+  for (const id of selection) {
+    const m = shapes[id];
+    if (m?.type !== 'macro') continue;
+    const cx = m.x + m.w / 2, cy = m.y + m.h / 2;
+    shapes[id] = { ...m, dir: CLOCKWISE[m.dir], w: m.h, h: m.w, x: Math.round(cx - m.h / 2), y: Math.round(cy - m.w / 2) };
+    n++;
+  }
+  if (!n) return notify('Select a macro to rotate.');
+  commit(syncConnections({ ...doc, shapes }));
+};
+
+/** Keys while the macro picker is open. */
+const pickerKey = (e: KeyboardEvent) => {
+  e.preventDefault();
+  if (e.key === 'Escape') return st().set({ showMacroPicker: false });
+  if (/^[2-9]$/.test(e.key)) return st().set({ muxInputs: Number(e.key) });
+  const keys: Record<string, Placeable> = { m: 'mux', a: 'alu', r: 'reg', o: 'op', p: 'pipe' };
+  const kind = keys[e.key.toLowerCase()];
+  if (kind) choosePlaceable(kind);
+};
+
 const isTyping = (t: EventTarget | null) =>
   t instanceof HTMLElement && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
 
 export const onKeyDown = (e: KeyboardEvent) => {
   if (isTyping(e.target) || st().textEdit) return;
+  if (st().showMacroPicker) return pickerKey(e);
   const mod = e.ctrlKey || e.metaKey;
   const k = e.key;
   const lower = k.toLowerCase();
@@ -94,6 +139,8 @@ export const onKeyDown = (e: KeyboardEvent) => {
         case 'c': return copyToClipboard(), true;
         case 'v': return paste(), true;
         case 'e': return void exportPngFile(), true;
+        case ']': case '}': return arrangeSelection(e.shiftKey ? 'front' : 'forward'), true;
+        case '[': case '{': return arrangeSelection(e.shiftKey ? 'back' : 'backward'), true;
         default: return false;
       }
     })();
@@ -123,12 +170,13 @@ export const onKeyDown = (e: KeyboardEvent) => {
       return;
     case 'u': return st().undo();
     case 'U': return st().redo();
-    case 'z': return zoomBy(1.25);
-    case 'Z': return zoomBy(1 / 1.25);
+    case 'z': return startZoomBox();
+    case 'Z': return zoomBy(1 / 2);
     case 'f': return fitView();
     case 'q': return st().set({ showProps: !st().showProps });
     case 'g': return st().set({ gridVisible: !st().gridVisible });
-    case 'i': return st().notify('Macros (MUX, ALU, register…) arrive in the next milestone.');
+    case 'i': return openMacroPicker();
+    case 'R': return rotateSelection();
     case '?': return st().set({ showHelp: !st().showHelp });
     case '1': case '2': case '3': return applyPreset(Number(k) - 1);
     case 'ArrowLeft': return panBy(-60, 0);
