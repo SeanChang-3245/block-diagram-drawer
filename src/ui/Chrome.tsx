@@ -176,51 +176,72 @@ export const StatusBar = () => {
   );
 };
 
-const SHORTCUTS: [string, string][][] = [
-  [
-    ['R', 'Rectangle box'],
-    ['W', 'Wire'],
-    ['B', 'Bus (wire + width mark)'],
-    ['L', 'Text label'],
-    ['I', 'Place macro (MUX, ALU, register, ...)'],
-    ['M', 'Move'],
-    ['C', 'Copy'],
-    ['S', 'Stretch edges / vertices'],
-    ['Esc', 'Cancel step / exit command'],
-    ['Del', 'Delete selection'],
-  ],
-  [
-    ['Q', 'Toggle properties panel'],
-    ['F', 'Fit diagram to window'],
-    ['Z', 'Zoom into an area (drag or click 2 corners)'],
-    ['Shift+Z', 'Zoom out 2×'],
-    ['U / Shift+U', 'Undo / redo'],
-    ['1 2 3', 'Line style: datapath / control / exception'],
-    ['G', 'Toggle grid'],
-    ['Ctrl+G / Ctrl+Shift+G', 'Group / ungroup'],
-    ['Ctrl+M', 'Make a custom macro from the selection'],
-    ['Ctrl+Shift+L', 'Auto layout (preview, then Enter / Esc)'],
-    ['Ctrl+L', 'Lock / unlock for auto layout'],
-    ['Ctrl+S / Ctrl+O', 'Save / open SVG'],
-    ['Ctrl+C / Ctrl+V', 'Copy / paste'],
-    ['Ctrl+E / Ctrl+P', 'Export PNG / PDF'],
-    ['Ctrl+] / Ctrl+[', 'Bring forward / send backward'],
-    ['Ctrl+Shift+] / [', 'Bring to front / send to back'],
-  ],
-  [
-    ['Shift+W', 'Re-route selected wires / toggle auto-route'],
-    ['A then ← → ↑ ↓ / H / V / D', 'Align to first selected / distribute'],
-    ['Shift+S', 'Straighten small wire jogs'],
-    ['Space', 'While drawing: use a simple bend (flip it)'],
-    ['Enter / dbl-click / right-click', 'Finish wire'],
-    ['Shift (move/copy/stretch)', 'Lock to one axis'],
-    ['Shift+click', 'Add to / remove from selection'],
-    ['Wheel', 'Zoom at cursor'],
-    ['Middle-drag / arrows', 'Pan'],
-    ['Double-click box', 'Edit text (Ctrl+Enter to finish)'],
-    ['Drag a wire label', 'Slide it along the wire'],
-    ['Shift+R', 'Rotate selected macros 90°'],
-  ],
+const SHORTCUTS: { title: string; keys: [string, string][] }[] = [
+  {
+    title: 'Draw',
+    keys: [
+      ['R', 'Rectangle box'],
+      ['W', 'Wire'],
+      ['B', 'Bus (wire + width mark)'],
+      ['L', 'Text label'],
+      ['I', 'Place macro (MUX, ALU, register, ...)'],
+      ['Space', 'While drawing: use a simple bend (flip it)'],
+      ['Enter / double-click', 'Finish wire (right-click works too)'],
+      ['1 2 3', 'Line style: datapath / control / exception'],
+    ],
+  },
+  {
+    title: 'Edit',
+    keys: [
+      ['M', 'Move'],
+      ['C', 'Copy'],
+      ['S', 'Stretch edges / vertices'],
+      ['Hold Shift', 'Lock move / copy / stretch to one axis'],
+      ['Shift+R', 'Rotate selected macros 90°'],
+      ['Double-click', 'Edit box or label text (Ctrl+Enter to finish)'],
+      ['Drag label', 'Slide a wire label along its wire'],
+      ['Shift+click', 'Add to / remove from selection'],
+      ['Del', 'Delete selection'],
+      ['Esc', 'Cancel step / exit command'],
+      ['U / Shift+U', 'Undo / redo'],
+      ['Ctrl+C / Ctrl+V', 'Copy / paste'],
+    ],
+  },
+  {
+    title: 'Arrange',
+    keys: [
+      ['A → ← → ↑ ↓', 'Align edges to the first selected'],
+      ['A → H / V', 'Centres on one row / one column'],
+      ['A → D', 'Distribute evenly'],
+      ['Shift+W', 'Re-route selected wires / toggle auto-route'],
+      ['Shift+S', 'Straighten small wire jogs'],
+      ['Ctrl+Shift+L', 'Auto layout (preview, then Enter / Esc)'],
+      ['Ctrl+L', 'Lock / unlock for auto layout'],
+      ['Ctrl+G / Ctrl+Shift+G', 'Group / ungroup'],
+      ['Ctrl+] / Ctrl+[', 'Bring forward / send backward'],
+      ['Ctrl+Shift+] / [', 'Bring to front / send to back'],
+      ['Ctrl+M', 'Make a custom macro from the selection'],
+    ],
+  },
+  {
+    title: 'View',
+    keys: [
+      ['Z', 'Zoom into an area (drag or click 2 corners)'],
+      ['Shift+Z', 'Zoom out 2×'],
+      ['F', 'Fit diagram to window'],
+      ['Wheel', 'Zoom at cursor'],
+      ['Middle-drag / ← → ↑ ↓', 'Pan'],
+      ['G', 'Toggle grid'],
+      ['Q', 'Toggle properties panel'],
+    ],
+  },
+  {
+    title: 'File',
+    keys: [
+      ['Ctrl+S / Ctrl+O', 'Save / open SVG'],
+      ['Ctrl+E / Ctrl+P', 'Export PNG / PDF'],
+    ],
+  },
 ];
 
 export const HelpOverlay = () => {
@@ -229,25 +250,26 @@ export const HelpOverlay = () => {
   if (!show) return null;
   return (
     <div className="help-backdrop" onClick={() => set({ showHelp: false })}>
-      <div className="help" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Keyboard shortcuts">
+      <div className="help help-shortcuts" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Keyboard shortcuts">
         <div className="help-head">
           <h2>Keyboard shortcuts</h2>
           <button type="button" onClick={() => set({ showHelp: false })}>Close</button>
         </div>
-        <div className="help-cols">
-          {SHORTCUTS.map((col, i) => (
-            <table key={i}>
-              <tbody>
-                {col.map(([k, d]) => (
-                  <tr key={k}>
-                    <td><kbd>{k}</kbd></td>
-                    <td>{d}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <table className="help-table">
+          {SHORTCUTS.map((section) => (
+            <tbody key={section.title}>
+              <tr>
+                <th colSpan={2}>{section.title}</th>
+              </tr>
+              {section.keys.map(([k, d]) => (
+                <tr key={k}>
+                  <td className="help-key"><kbd>{k}</kbd></td>
+                  <td>{d}</td>
+                </tr>
+              ))}
+            </tbody>
           ))}
-        </div>
+        </table>
         <p className="muted">
           Stretch works like a layout editor: press <kbd>S</kbd>, then click a box edge (or corner) to resize, a wire segment to slide it, or a
           vertex to move it. Drag a box instead to grab every edge and vertex inside it. Wires whose ends sit on a moving edge follow it.

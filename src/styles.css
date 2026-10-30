@@ -323,14 +323,33 @@ kbd {
   margin: 0 0 12px;
   font-size: 17px;
 }
-.help-cols {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 6px 22px;
+.help-shortcuts {
+  max-width: 640px;
 }
-.help td {
-  padding: 3px 8px 3px 0;
+.help-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.help-table th {
+  text-align: left;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  padding: 14px 0 4px;
+  border-bottom: 1px solid var(--border);
+}
+.help-table tbody:first-child th {
+  padding-top: 2px;
+}
+.help-table td {
+  padding: 4px 12px 4px 0;
   vertical-align: top;
+}
+/* Keys stay on one line so each shortcut reads as a single row. */
+.help-key {
+  white-space: nowrap;
+  width: 1%;
 }
 
 .toast {
