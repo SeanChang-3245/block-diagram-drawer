@@ -447,3 +447,7 @@ kbd {
   background: var(--panel-2);
   resize: vertical;
 }
+
+.status .route-toggle {
+  padding: 1px 8px;
+}

@@ -5,7 +5,7 @@ import { LINE_PRESETS } from '../model/presets';
 import { MACRO_TEMPLATES } from '../model/macros';
 import { armTool, makePlaceable } from '../tools/interaction';
 import { ShapeView } from '../render/ShapeView';
-import { applyPreset, choosePlaceable, exportLibrary, exportPdfFile, exportPngFile, importLibrary, newFile, openFile, openMacroPicker, removeFromLibrary, saveFile } from './commands';
+import { applyPreset, choosePlaceable, exportLibrary, toggleAutoRoute, exportPdfFile, exportPngFile, importLibrary, newFile, openFile, openMacroPicker, removeFromLibrary, saveFile } from './commands';
 import { AI_PROMPT } from '../io/aiFormat';
 import { fitView } from './viewOps';
 
@@ -123,6 +123,7 @@ export const StatusBar = () => {
   const placing = useStore((s) => s.placing);
   const muxInputs = useStore((s) => s.muxInputs);
   const library = useStore((s) => s.library);
+  const autoRoute = useStore((s) => s.autoRoute);
   return (
     <footer className="status">
       <span className="mode">{tool.toUpperCase()}</span>
@@ -162,6 +163,9 @@ export const StatusBar = () => {
         </span>
       )}
       <span className="spacer" />
+      <button type="button" className={`route-toggle ${autoRoute ? 'on' : ''}`} onClick={toggleAutoRoute} title="Route wires around blocks automatically (Shift+W with nothing selected)">
+        Auto-route {autoRoute ? 'on' : 'off'}
+      </button>
       {selCount > 0 && <span>{selCount} selected</span>}
       <span className="coords">
         x {Math.round(cursor.x)} y {Math.round(cursor.y)}
@@ -201,7 +205,10 @@ const SHORTCUTS: [string, string][][] = [
     ['Ctrl+Shift+] / [', 'Bring to front / send to back'],
   ],
   [
-    ['Space', 'While routing: flip the bend'],
+    ['Shift+W', 'Re-route selected wires / toggle auto-route'],
+    ['A then ← → ↑ ↓ / H / V / D', 'Align to first selected / distribute'],
+    ['Shift+S', 'Straighten small wire jogs'],
+    ['Space', 'While drawing: use a simple bend (flip it)'],
     ['Enter / dbl-click / right-click', 'Finish wire'],
     ['Shift (move/copy/stretch)', 'Lock to one axis'],
     ['Shift+click', 'Add to / remove from selection'],

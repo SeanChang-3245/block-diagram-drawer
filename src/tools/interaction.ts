@@ -18,9 +18,11 @@ import {
   type Target,
 } from '../model/edits';
 import { MACRO_TEMPLATES, macroPorts, type Port } from '../model/macros';
+import { obstacles, rerouteAffected, route, terminalAt } from '../model/router';
+import type { Rect } from '../model/geometry';
 import { customInstance } from '../model/custom';
 import { GRID } from '../model/presets';
-import { newId, type Doc, type Pt, type Shape } from '../model/types';
+import { newId, type Doc, type PortRef, type Pt, type Shape } from '../model/types';
 
 type DragMode = 'move' | 'copy' | 'stretch';
 
@@ -31,7 +33,7 @@ type Phase =
   | { k: 'awaitRef'; mode: DragMode; targets: Target[] }
   | { k: 'drag'; mode: DragMode; ref: Pt; base: Doc; targets: Target[]; pressed: boolean; downScreen: Pt; moved: boolean; select?: string[] }
   | { k: 'rect'; anchor: Pt; pressed: boolean; downScreen: Pt }
-  | { k: 'wire'; points: Pt[]; hOverride: boolean | null; startH: boolean | null }
+  | { k: 'wire'; points: Pt[]; hOverride: boolean | null; startH: boolean | null; startRef?: PortRef; clicks: number; rects: Rect[] }
   | { k: 'label'; id: string; base: Doc };
 
 const DRAG_THRESHOLD = 3; // screen px
@@ -90,16 +92,16 @@ const hitTest = (doc: Doc, p: Pt): Shape | null => {
 };
 
 /** Nearest macro port within reach of the cursor. */
-const nearPort = (doc: Doc, p: Pt): Port | null => {
+const nearPort = (doc: Doc, p: Pt): (Port & { id: string }) | null => {
   const reach = PORT_SNAP / st().view.zoom;
-  let best: Port | null = null, bestD = reach;
+  let best: (Port & { id: string }) | null = null, bestD = reach;
   for (const id of doc.order) {
     const m = doc.shapes[id];
     if (m?.type !== 'macro') continue;
     for (const port of macroPorts(m)) {
       const d = Math.hypot(port.p.x - p.x, port.p.y - p.y);
       if (d <= bestD) {
-        best = port;
+        best = { ...port, id };
         bestD = d;
       }
     }
@@ -146,9 +148,10 @@ const startDrag = (mode: DragMode, targets: Target[], ref: Pt, screen: Pt, press
 
 const finishDrag = () => {
   if (phase.k !== 'drag') return;
-  const { mode, select } = phase;
-  const preview = st().preview ?? phase.base;
-  const result = finalizeTargets(preview, phase.targets);
+  const { mode, select, targets, base } = phase;
+  const preview = st().preview ?? base;
+  let result = finalizeTargets(preview, targets);
+  if (st().autoRoute && mode !== 'copy') result = rerouteAfterDrag(base, result, targets, mode);
   st().commit(result, select ? { select } : undefined);
   phase = { k: 'idle' };
   if (mode === 'stretch') {
@@ -158,9 +161,39 @@ const finishDrag = () => {
   }
 };
 
+/**
+ * Once a drag ends, wires attached to the blocks that moved are re-routed. A
+ * wire the user stretched directly counts as hand-shaped from then on.
+ */
+const rerouteAfterDrag = (base: Doc, doc: Doc, targets: Target[], mode: DragMode): Doc => {
+  const changed = new Set<string>();
+  const userWires = new Set<string>();
+  targets.forEach((t, i) => {
+    const s = base.shapes[t.id];
+    if (!s) return;
+    if (s.type === 'wire') {
+      // In a stretch the first target is what was clicked; area stretches grab interior vertices too.
+      const interior = t.kind === 'wirePoints' && t.pts.some((q) => q.i !== 0 && q.i !== s.points.length - 1);
+      if (t.kind === 'move' || (mode === 'stretch' && (i === 0 || interior))) userWires.add(t.id);
+    } else if (t.kind !== 'wirePoints') changed.add(t.id);
+  });
+  let next = rerouteAffected(doc, changed, userWires);
+  if (mode === 'stretch' && userWires.size) {
+    const shapes = { ...next.shapes };
+    for (const id of userWires) {
+      const w = shapes[id];
+      if (w?.type === 'wire') shapes[id] = { ...w, manual: true };
+    }
+    next = { ...next, shapes };
+  }
+  return next;
+};
+
 const finishWire = () => {
   if (phase.k !== 'wire') return;
   const pts = simplifyPolyline(phase.points);
+  // Routed point-to-point it stays automatic; extra waypoints or manual mode make it hand-shaped.
+  const manual = !st().autoRoute || phase.clicks > 2;
   phase = { k: 'idle' };
   st().set({ overlay: {} });
   if (pts.length < 2) return;
@@ -171,9 +204,26 @@ const finishWire = () => {
     points: pts,
     stroke: { ...wireStroke },
     busWidth: tool === 'bus' ? busWidth : 1,
+    ...(manual ? { manual: true } : {}),
   };
   const next = bindConnections({ shapes: { ...doc.shapes, [wire.id]: wire }, order: [...doc.order, wire.id] }, [wire.id]);
   commit(next, { select: [wire.id] });
+};
+
+/**
+ * Points of the wire being drawn plus the run to the cursor: routed around
+ * blocks in auto-route mode (Space forces a simple bend), otherwise one bend.
+ */
+const nextSegment = (w: Extract<Phase, { k: 'wire' }>, cursor: Pt, port: (Port & { id: string }) | null): Pt[] => {
+  const doc = st().doc;
+  if (st().autoRoute && w.hOverride === null) {
+    const last = w.points[w.points.length - 1];
+    const from = w.points.length === 1 ? terminalAt(doc, last, w.startRef) : { p: last, out: null };
+    const to = terminalAt(doc, cursor, port ? { id: port.id, port: port.name } : undefined);
+    const r = route(from, to, w.rects);
+    if (r) return [...w.points, ...r.slice(1)];
+  }
+  return wirePreview(w.points, cursor, w.hOverride, port?.horizontal ?? null, w.startH);
 };
 
 /** Shape the place command drops with its top-left corner at `at`. */
@@ -276,10 +326,21 @@ export const pointerDown = (p: Pt, screen: Pt, button: number, shift: boolean) =
     const port = nearPort(s.doc, p);
     const q = port?.p ?? snapped(p);
     if (phase.k === 'wire') {
-      phase.points = wirePreview(phase.points, q, phase.hOverride, port?.horizontal ?? null, phase.startH);
+      phase.points = nextSegment(phase, q, port);
       phase.hOverride = null;
+      phase.clicks++;
+      // A click on a pin ends the wire there.
+      if (port && s.autoRoute) return finishWire();
     } else {
-      phase = { k: 'wire', points: [q], hOverride: null, startH: port?.horizontal ?? null };
+      phase = {
+        k: 'wire',
+        points: [q],
+        hOverride: null,
+        startH: port?.horizontal ?? null,
+        startRef: port ? { id: port.id, port: port.name } : undefined,
+        clicks: 1,
+        rects: obstacles(s.doc),
+      };
       s.setPrompt('Click the next point. Double-click, Enter or right-click to finish.');
     }
     s.set({ overlay: { wirePreview: { points: phase.points } } });
@@ -403,7 +464,7 @@ export const pointerMove = (p: Pt, screen: Pt, shift: boolean): void => {
       return;
     case 'wire': {
       const port = nearPort(s.doc, p);
-      const points = wirePreview(phase.points, port?.p ?? snapped(p), phase.hOverride, port?.horizontal ?? null, phase.startH);
+      const points = nextSegment(phase, port?.p ?? snapped(p), port);
       s.set({ overlay: { wirePreview: { points }, ...(port ? { port: port.p } : {}) } });
       return;
     }

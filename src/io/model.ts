@@ -7,6 +7,7 @@ import { defaultBox, defaultText, defaultWire } from '../model/presets';
 import { MACRO_TEMPLATES, macroPorts } from '../model/macros';
 import { snap } from '../model/geometry';
 import { syncConnections } from '../model/edits';
+import { obstacles, route, terminalAt } from '../model/router';
 import { newId, type Doc, type MacroShape, type Pt, type Shape, type Stroke, type WireShape } from '../model/types';
 
 type Loose = Record<string, unknown>;
@@ -167,11 +168,14 @@ const portInfo = (doc: Doc, ref: WireShape['from']) => {
  */
 export const routeConnections = (doc: Doc): Doc => {
   const shapes = { ...doc.shapes };
+  const rects = obstacles(doc);
   for (const id of doc.order) {
     const w = shapes[id];
     if (w?.type !== 'wire') continue;
     const a = portInfo(doc, w.from), b = portInfo(doc, w.to);
-    let pts = w.points.length >= 2 ? w.points : a && b ? [a.p, b.p] : w.points;
+    // Pin-to-pin wires without points go around blocks; the rest only get straightened below.
+    const routed = w.points.length < 2 && a && b ? route(terminalAt(doc, a.p, w.from), terminalAt(doc, b.p, w.to), rects) : null;
+    let pts = routed ?? (w.points.length >= 2 ? w.points : a && b ? [a.p, b.p] : w.points);
     if (a) pts = [a.p, ...pts.slice(1)];
     if (b) pts = [...pts.slice(0, -1), b.p];
     const out: Pt[] = [pts[0]];

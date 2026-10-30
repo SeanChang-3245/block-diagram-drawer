@@ -4,6 +4,7 @@ import { emptyDoc, type CustomDef, type Doc, type MacroKind, type Shape, type St
 import { loadLibrary } from './io/library';
 import type { Rect } from './model/geometry';
 import { syncConnections, type Edges } from './model/edits';
+import { rerouteAffected } from './model/router';
 
 export type ToolName = 'select' | 'rect' | 'wire' | 'bus' | 'text' | 'move' | 'copy' | 'stretch' | 'place';
 
@@ -59,6 +60,10 @@ interface State {
   muxInputs: number;
   showMacroPicker: boolean;
   showAiPrompt: boolean;
+  /** Route wires around blocks automatically (drawing and after moves). */
+  autoRoute: boolean;
+  /** `a` was pressed: the next key picks how to align. */
+  alignArmed: boolean;
   /** User-defined macros kept in this browser. */
   library: CustomDef[];
   showHelp: boolean;
@@ -96,6 +101,24 @@ export const TOOL_PROMPTS: Record<ToolName, string> = {
   place: 'Place: click to drop the macro (top-left corner at the cursor). Esc to stop.',
 };
 
+/** Per-browser preference; storage can be unavailable, so fall back quietly. */
+function readPref(key: string, fallback: boolean): boolean {
+  try {
+    const v = localStorage.getItem(key);
+    return v === null ? fallback : v === '1';
+  } catch {
+    return fallback;
+  }
+}
+
+export const writePref = (key: string, value: boolean) => {
+  try {
+    localStorage.setItem(key, value ? '1' : '0');
+  } catch {
+    // preference just won't persist
+  }
+};
+
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 
 export const useStore = create<State>((set, get) => ({
@@ -119,6 +142,8 @@ export const useStore = create<State>((set, get) => ({
   muxInputs: 2,
   showMacroPicker: false,
   showAiPrompt: false,
+  autoRoute: readPref('bdd-auto-route', true),
+  alignArmed: false,
   library: loadLibrary(),
   showHelp: false,
   showProps: true,
@@ -188,8 +213,11 @@ export const useStore = create<State>((set, get) => ({
         changed = true;
       }
     }
-    // Attached wires follow edits such as a MUX gaining inputs.
-    if (changed) commit(syncConnections({ ...doc, shapes }), { key });
+    // Attached wires follow edits such as a MUX gaining inputs, and get re-routed in auto-route mode.
+    if (!changed) return;
+    let next = syncConnections({ ...doc, shapes });
+    if (get().autoRoute) next = rerouteAffected(next, new Set(ids.filter((id) => shapes[id]?.type === 'box' || shapes[id]?.type === 'macro')));
+    commit(next, { key });
   },
   loadDoc: (doc, fileName) =>
     set({ doc, past: [], future: [], preview: null, selection: [], fileName, dirty: false, lastCommitKey: null }),

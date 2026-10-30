@@ -50,6 +50,8 @@ export interface WireShape extends ShapeBase {
   /** Macro ports the endpoints are attached to; they follow the macro. */
   from?: PortRef;
   to?: PortRef;
+  /** Shaped by hand: automatic re-routing leaves this wire alone. */
+  manual?: boolean;
 }
 
 export interface PortRef {

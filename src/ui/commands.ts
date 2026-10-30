@@ -1,4 +1,6 @@
-import { useStore, type Placeable } from '../store';
+import { useStore, writePref, type Placeable } from '../store';
+import { rerouteAffected, rerouteWire } from '../model/router';
+import { alignShapes, straightenWire, type AlignHow } from '../model/tidy';
 import { LINE_PRESETS } from '../model/presets';
 import { arrange, duplicate, expandGroups, syncConnections, type Arrange } from '../model/edits';
 import { newId, type CustomDef, type Direction, type Doc } from '../model/types';
@@ -106,7 +108,8 @@ export const rotateSelection = () => {
     n++;
   }
   if (!n) return notify('Select a macro to rotate.');
-  commit(syncConnections({ ...doc, shapes }));
+  const synced = syncConnections({ ...doc, shapes });
+  commit(st().autoRoute ? rerouteAffected(synced, new Set(selection)) : synced);
 };
 
 const setLibrary = (library: CustomDef[]) => {
@@ -181,6 +184,80 @@ export const importLibrary = () => {
   input.click();
 };
 
+export const toggleAutoRoute = () => {
+  const on = !st().autoRoute;
+  st().set({ autoRoute: on });
+  writePref('bdd-auto-route', on);
+  st().notify(on ? 'Auto-route on: wires go around blocks and re-route when blocks move.' : 'Auto-route off: wires bend only where you click.');
+};
+
+/** Shift+W: re-route the selected wires (making them automatic again), or toggle auto-route if none is selected. */
+export const rerouteOrToggle = () => {
+  const { doc, selection, commit, notify } = st();
+  const wires = expandGroups(doc, selection).filter((id) => doc.shapes[id]?.type === 'wire');
+  if (!wires.length) return toggleAutoRoute();
+  const shapes = { ...doc.shapes };
+  for (const id of wires) {
+    const w = shapes[id];
+    if (w.type !== 'wire') continue;
+    const { manual: _m, ...rest } = w;
+    shapes[id] = rerouteWire(doc, rest);
+  }
+  commit({ ...doc, shapes });
+  notify(`Re-routed ${wires.length} wire(s)`);
+};
+
+const ALIGN_PROMPT = 'Align to the first selected: ← → ↑ ↓ edges, H centres on a row, V centres in a column, D distribute evenly. Esc cancels.';
+
+/** `a`: arm align; the next key says how (Virtuoso-style two-key command). */
+export const armAlign = () => {
+  const { selection, notify, setPrompt, prompt } = st();
+  if (selection.length < 2) return notify('Select at least two shapes to align (the first one stays put).');
+  alignReturnPrompt = prompt;
+  st().set({ alignArmed: true });
+  setPrompt(ALIGN_PROMPT);
+};
+let alignReturnPrompt = '';
+
+export const alignSelection = (how: AlignHow) => {
+  const { doc, selection, commit, notify, autoRoute } = st();
+  const { doc: next, moved } = alignShapes(doc, selection, how);
+  if (!moved.length) return notify(how === 'distribute' ? 'Distribute needs three or more shapes.' : 'Already aligned.');
+  commit(autoRoute ? rerouteAffected(next, new Set(moved)) : next);
+};
+
+const alignKey = (e: KeyboardEvent) => {
+  e.preventDefault();
+  const how: Record<string, AlignHow> = {
+    ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'top', ArrowDown: 'bottom', h: 'hcenter', v: 'vcenter', d: 'distribute',
+  };
+  const chosen = how[e.key.length === 1 ? e.key.toLowerCase() : e.key];
+  if (!chosen && e.key !== 'Escape') return; // ignore other keys, stay armed
+  st().set({ alignArmed: false });
+  st().setPrompt(alignReturnPrompt);
+  if (chosen) alignSelection(chosen);
+};
+
+/** Shift+S: straighten short jogs in the selected wires (all wires if none is selected). */
+export const straightenWires = () => {
+  const { doc, selection, commit, notify } = st();
+  const pool = selection.length ? expandGroups(doc, selection) : doc.order;
+  const shapes = { ...doc.shapes };
+  let n = 0;
+  for (const id of pool) {
+    const w = shapes[id];
+    if (w?.type !== 'wire') continue;
+    const next = straightenWire(w);
+    if (next !== w) {
+      shapes[id] = next;
+      n++;
+    }
+  }
+  if (!n) return notify('No small jogs to straighten.');
+  commit(syncConnections({ ...doc, shapes }));
+  notify(`Straightened ${n} wire(s)`);
+};
+
 /** Keys while the macro picker is open. */
 const pickerKey = (e: KeyboardEvent) => {
   e.preventDefault();
@@ -197,6 +274,7 @@ const isTyping = (t: EventTarget | null) =>
 export const onKeyDown = (e: KeyboardEvent) => {
   if (isTyping(e.target) || st().textEdit) return;
   if (st().showMacroPicker) return pickerKey(e);
+  if (st().alignArmed) return alignKey(e);
   if (st().showAiPrompt || st().showHelp) {
     if (e.key === 'Escape' || (e.key === '?' && st().showHelp)) st().set({ showAiPrompt: false, showHelp: false });
     return;
@@ -257,6 +335,9 @@ export const onKeyDown = (e: KeyboardEvent) => {
     case 'g': return st().set({ gridVisible: !st().gridVisible });
     case 'i': return openMacroPicker();
     case 'R': return rotateSelection();
+    case 'W': return rerouteOrToggle();
+    case 'a': return armAlign();
+    case 'S': return straightenWires();
     case '?': return st().set({ showHelp: !st().showHelp });
     case '1': case '2': case '3': return applyPreset(Number(k) - 1);
     case 'ArrowLeft': return panBy(-60, 0);
