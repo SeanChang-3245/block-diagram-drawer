@@ -36,6 +36,14 @@ boxes, wires, junction dots and labels, so you can fine-tune it by hand.
 - **Custom macros** (`Ctrl+M`): turn a selection into a reusable symbol. Wire stubs whose ends touch nothing become its
   pins, named after their labels. Macros live in your library (picker under `I`, export / import as a file) and every
   diagram keeps its own copy, so files stay self-contained.
+- **Auto-routing** (on by default, toggle in the status bar or `Shift+W`): click a start pin and an end pin and the
+  wire finds its way around blocks; wires attached to a block re-route when it moves, stretches or rotates. Wires you
+  stretch by hand are left alone; `Shift+W` on selected wires re-routes them.
+- **Tidy-up**: `A` then an arrow key aligns edges to the first selected shape, `H` / `V` centres, `D` spreads shapes
+  evenly; `Shift+S` straightens small jogs in wires.
+- **Auto layout** (`Ctrl+Shift+L`): places blocks left to right (or top to bottom) and routes the wires, with pipeline
+  registers as stage columns. You see a preview and press `Enter` to apply; locked shapes (`Ctrl+L`) stay put.
+  An AI may leave out block coordinates entirely and let auto layout place them.
 - **Export** SVG, PNG and vector PDF.
 - Grid snapping, undo / redo, grouping, copy / paste, drag-and-drop open, crash-recovery autosave.
 - Runs entirely in your browser: no server, your diagrams never leave your machine.
@@ -56,7 +64,9 @@ boxes, wires, junction dots and labels, so you can fine-tune it by hand.
 | `1` `2` `3` | Line style preset | `G` | Toggle grid |
 | `Ctrl+G` / `Ctrl+Shift+G` | Group / ungroup | `Ctrl+S` / `Ctrl+O` | Save / open |
 | `Ctrl+C` / `Ctrl+V` | Copy / paste | `Ctrl+E` / `Ctrl+P` | Export PNG / PDF |
-| `Ctrl+M` | Make custom macro from selection | | |
+| `Ctrl+M` | Make custom macro from selection | `Shift+W` | Re-route selected wires / toggle auto-route |
+| `A` then `←→↑↓` `H` `V` `D` | Align / distribute | `Shift+S` | Straighten wire jogs |
+| `Ctrl+Shift+L` | Auto layout (preview, `Enter` / `Esc`) | `Ctrl+L` | Lock / unlock for auto layout |
 
 While routing a wire: click to add points, `Space` flips the bend, double-click / `Enter` / right-click finishes.
 Holding `Shift` during move, copy or stretch locks the motion to one axis. Press `?` in the app for the full sheet.
@@ -110,6 +120,11 @@ Pushing to `main` builds and publishes the site with GitHub Actions
 2. ~~Hardware macros: MUX with any number of inputs, ALU, register / flip-flop, adder; ports that wires snap to; wire labels~~
 3. ~~Smarter import: recognise MUX / ALU shapes in AI-drawn SVGs~~
 4. ~~Published format spec for AI tools, PDF export, user-defined macros~~
+5. ~~Auto-routing, align / distribute, auto layout~~
+
+Auto layout works best as a first draft (e.g. for an AI diagram without coordinates). On a hand-polished diagram
+it rearranges blocks but leaves free text (titles, stage names) where it was, and long feedback paths may wrap
+around the outside.
 
 ## License
 

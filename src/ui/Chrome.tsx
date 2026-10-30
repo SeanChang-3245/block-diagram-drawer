@@ -5,7 +5,7 @@ import { LINE_PRESETS } from '../model/presets';
 import { MACRO_TEMPLATES } from '../model/macros';
 import { armTool, makePlaceable } from '../tools/interaction';
 import { ShapeView } from '../render/ShapeView';
-import { applyPreset, choosePlaceable, exportLibrary, toggleAutoRoute, exportPdfFile, exportPngFile, importLibrary, newFile, openFile, openMacroPicker, removeFromLibrary, saveFile } from './commands';
+import { applyLayout, applyPreset, cancelLayout, choosePlaceable, exportLibrary, openLayout, previewLayout, toggleAutoRoute, exportPdfFile, exportPngFile, importLibrary, newFile, openFile, openMacroPicker, removeFromLibrary, saveFile } from './commands';
 import { AI_PROMPT } from '../io/aiFormat';
 import { fitView } from './viewOps';
 
@@ -101,6 +101,7 @@ export const TopBar = () => {
         <label className="inline"><input type="checkbox" checked={gridVisible} onChange={(e) => set({ gridVisible: e.target.checked })} /> Grid</label>
         <label className="inline"><input type="checkbox" checked={snapOn} onChange={(e) => set({ snapOn: e.target.checked })} /> Snap</label>
         <button type="button" onClick={fitView} title="Fit (F)">Fit</button>
+        <button type="button" onClick={openLayout} title="Place blocks and route wires automatically (Ctrl+Shift+L)">Auto layout</button>
       </div>
       <div className="spacer" />
       <button type="button" onClick={() => set({ showAiPrompt: true })} title="Get a prompt that makes an AI draw editable diagrams">AI prompt</button>
@@ -198,6 +199,8 @@ const SHORTCUTS: [string, string][][] = [
     ['G', 'Toggle grid'],
     ['Ctrl+G / Ctrl+Shift+G', 'Group / ungroup'],
     ['Ctrl+M', 'Make a custom macro from the selection'],
+    ['Ctrl+Shift+L', 'Auto layout (preview, then Enter / Esc)'],
+    ['Ctrl+L', 'Lock / unlock for auto layout'],
     ['Ctrl+S / Ctrl+O', 'Save / open SVG'],
     ['Ctrl+C / Ctrl+V', 'Copy / paste'],
     ['Ctrl+E / Ctrl+P', 'Export PNG / PDF'],
@@ -375,6 +378,84 @@ export const AiPromptDialog = () => {
         </p>
         <textarea className="ai-prompt" readOnly value={AI_PROMPT} onKeyDown={(e) => e.stopPropagation()} />
       </div>
+    </div>
+  );
+};
+
+/** Ctrl+Shift+L: auto layout options; the result is previewed before it is applied. */
+export const LayoutDialog = () => {
+  const show = useStore((s) => s.showLayout);
+  const opts = useStore((s) => s.layoutOpts);
+  const selCount = useStore((s) => s.selection.length);
+  const set = useStore((s) => s.set);
+  if (!show) return null;
+  const patch = (p: Partial<typeof opts>) => set({ layoutOpts: { ...opts, ...p } });
+  return (
+    <div className="help-backdrop" onClick={() => set({ showLayout: false })}>
+      <div className="picker layout-dialog" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Auto layout">
+        <div className="help-head">
+          <h2>Auto layout</h2>
+        </div>
+        <div className="layout-rows">
+          <label className="prop-row">
+            <span>Flow</span>
+            <div className="seg">
+              {(['RIGHT', 'DOWN'] as const).map((d) => (
+                <button key={d} type="button" className={opts.direction === d ? 'on' : ''} onClick={() => patch({ direction: d })}>
+                  {d === 'RIGHT' ? 'Left → right' : 'Top → bottom'}
+                </button>
+              ))}
+            </div>
+          </label>
+          <label className="prop-row">
+            <span>Spacing</span>
+            <div className="prop-ctl">
+              <input
+                type="number"
+                min={10}
+                step={10}
+                value={opts.spacing}
+                onKeyDown={(e) => e.stopPropagation()}
+                onChange={(e) => patch({ spacing: Math.max(10, Math.round(Number(e.target.value) / 10) * 10 || 40) })}
+              />
+            </div>
+          </label>
+          <label className="prop-row">
+            <span>Stages</span>
+            <div className="prop-ctl">
+              <label className="inline">
+                <input type="checkbox" checked={opts.stages} onChange={(e) => patch({ stages: e.target.checked })} /> pipeline registers split the
+                diagram into columns
+              </label>
+            </div>
+          </label>
+        </div>
+        <p className="muted small">
+          Locked shapes (<kbd>Ctrl+L</kbd>) and free text stay where they are. You get a preview first; <kbd>U</kbd> undoes an applied layout.
+        </p>
+        <div className="layout-actions">
+          {selCount > 0 && (
+            <button type="button" onClick={() => void previewLayout('selection')}>
+              Lay out selection ({selCount})
+            </button>
+          )}
+          <button type="button" className="on" onClick={() => void previewLayout('all')}>
+            Lay out whole diagram
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export const LayoutBar = () => {
+  const pending = useStore((s) => s.pendingLayout !== null);
+  if (!pending) return null;
+  return (
+    <div className="layout-bar" role="status">
+      <strong>Auto layout preview</strong>
+      <button type="button" className="on" onClick={applyLayout}>Apply (Enter)</button>
+      <button type="button" onClick={cancelLayout}>Cancel (Esc)</button>
     </div>
   );
 };

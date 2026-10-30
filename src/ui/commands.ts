@@ -1,6 +1,7 @@
 import { useStore, writePref, type Placeable } from '../store';
 import { rerouteAffected, rerouteWire } from '../model/router';
 import { alignShapes, straightenWire, type AlignHow } from '../model/tidy';
+import { autoLayout } from '../model/layout';
 import { LINE_PRESETS } from '../model/presets';
 import { arrange, duplicate, expandGroups, syncConnections, type Arrange } from '../model/edits';
 import { newId, type CustomDef, type Direction, type Doc } from '../model/types';
@@ -258,6 +259,45 @@ export const straightenWires = () => {
   notify(`Straightened ${n} wire(s)`);
 };
 
+/** Ctrl+L: lock / unlock the selection against auto layout. */
+export const toggleLock = () => {
+  const { doc, selection, updateShapes, notify } = st();
+  const ids = expandGroups(doc, selection);
+  if (!ids.length) return notify('Select the shapes auto layout should leave alone.');
+  const lock = !ids.every((id) => doc.shapes[id]?.locked);
+  updateShapes(ids, (s) => {
+    const { locked: _l, ...rest } = s;
+    return (lock ? { ...rest, locked: true } : rest) as typeof s;
+  });
+  notify(lock ? `Locked ${ids.length} shape(s): auto layout will not move them.` : `Unlocked ${ids.length} shape(s)`);
+};
+
+export const openLayout = () => st().set({ showLayout: true });
+
+/** Run auto layout with the dialog's options and show the result for approval. */
+export const previewLayout = async (scope: 'selection' | 'all') => {
+  const { doc, selection, layoutOpts, notify, set } = st();
+  set({ showLayout: false });
+  notify('Laying out…');
+  try {
+    const next = await autoLayout(doc, scope === 'selection' && selection.length ? selection : null, layoutOpts);
+    if (next === doc) return notify('Nothing to lay out: select boxes or macros that are not locked.');
+    st().set({ pendingLayout: next, toast: null });
+  } catch (e) {
+    notify(`Auto layout failed: ${(e as Error).message}`);
+  }
+};
+
+export const applyLayout = () => {
+  const { pendingLayout, commit } = st();
+  if (!pendingLayout) return;
+  st().set({ pendingLayout: null });
+  commit(pendingLayout);
+  st().notify('Layout applied. U undoes it.');
+};
+
+export const cancelLayout = () => st().set({ pendingLayout: null });
+
 /** Keys while the macro picker is open. */
 const pickerKey = (e: KeyboardEvent) => {
   e.preventDefault();
@@ -273,10 +313,16 @@ const isTyping = (t: EventTarget | null) =>
 
 export const onKeyDown = (e: KeyboardEvent) => {
   if (isTyping(e.target) || st().textEdit) return;
+  if (st().pendingLayout) {
+    if (e.key === 'Enter') applyLayout();
+    else if (e.key === 'Escape') cancelLayout();
+    e.preventDefault();
+    return;
+  }
   if (st().showMacroPicker) return pickerKey(e);
   if (st().alignArmed) return alignKey(e);
-  if (st().showAiPrompt || st().showHelp) {
-    if (e.key === 'Escape' || (e.key === '?' && st().showHelp)) st().set({ showAiPrompt: false, showHelp: false });
+  if (st().showAiPrompt || st().showHelp || st().showLayout) {
+    if (e.key === 'Escape' || (e.key === '?' && st().showHelp)) st().set({ showAiPrompt: false, showHelp: false, showLayout: false });
     return;
   }
   const mod = e.ctrlKey || e.metaKey;
@@ -297,6 +343,7 @@ export const onKeyDown = (e: KeyboardEvent) => {
         case 'e': return void exportPngFile(), true;
         case 'p': return void exportPdfFile(), true;
         case 'm': return makeMacro(), true;
+        case 'l': return (e.shiftKey ? openLayout() : toggleLock()), true;
         case ']': case '}': return arrangeSelection(e.shiftKey ? 'front' : 'forward'), true;
         case '[': case '{': return arrangeSelection(e.shiftKey ? 'back' : 'backward'), true;
         default: return false;

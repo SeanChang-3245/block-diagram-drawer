@@ -23,6 +23,7 @@ FORMAT
 - Coordinates are SVG user units, y grows downward. Use multiples of 10 so things line up on the grid.
 - Each shape needs "type" plus the fields shown in its first example below; anything else left out gets a sensible default.
 - Give shapes you connect wires to a short unique "id".
+- Not sure where things should go? Leave out "x" and "y" of every box and macro and connect them with "from"/"to" wires: the editor then places the blocks itself (signals flowing left to right) and routes the wires. Tall thin boxes (e.g. w 20, h 300) act as pipeline registers and split the stages into columns.
 
 SHAPES
 1. Box: {"type":"box","id":"rf","x":..,"y":..,"w":..,"h":..,"text":"Register File\n2R1W"}

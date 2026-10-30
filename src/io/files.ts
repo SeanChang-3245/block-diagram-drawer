@@ -4,6 +4,7 @@
 import { useStore } from '../store';
 import { exportPdf, exportPng, exportSvg } from './exportSvg';
 import { importSvg } from './importSvg';
+import { autoLayout } from '../model/layout';
 import { fitView } from '../ui/viewOps';
 
 interface FileHandleLike {
@@ -32,10 +33,15 @@ const download = (blob: Blob, name: string) => {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 
-export const loadSvgText = (text: string, name: string) => {
+export const loadSvgText = async (text: string, name: string) => {
   const s = useStore.getState();
   try {
-    const { doc, native, stats, recognized: r } = importSvg(text);
+    const { doc: imported, native, stats, recognized: r, unplaced } = importSvg(text);
+    let doc = imported;
+    if (unplaced.length) {
+      s.notify(`Placing ${unplaced.length} blocks…`);
+      doc = await autoLayout(doc, unplaced);
+    }
     s.loadDoc(doc, name);
     fitView();
     if (native) s.notify(`Opened ${name}`);

@@ -113,6 +113,27 @@ const Overlays = ({ zoom }: { zoom: number }) => {
   return <g pointerEvents="none">{out}</g>;
 };
 
+/** Padlock in the corner of shapes locked against auto layout (editor only, never exported). */
+const LockBadges = ({ zoom }: { zoom: number }) => {
+  const doc = useVisibleDoc();
+  const k = 1 / zoom;
+  return (
+    <g pointerEvents="none">
+      {doc.order.map((id) => {
+        const s = doc.shapes[id];
+        if (!s?.locked) return null;
+        const b = shapeBounds(s);
+        return (
+          <g key={id} transform={`translate(${b.x + b.w - 2 * k},${b.y - 10 * k}) scale(${k})`}>
+            <rect x={-1} y={3} width={10} height={8} rx={1.5} fill="#f08c00" />
+            <path d="M1.5 3.5 V2 a2.5 2.5 0 0 1 5 0 V3.5" fill="none" stroke="#f08c00" strokeWidth={1.5} />
+          </g>
+        );
+      })}
+    </g>
+  );
+};
+
 /** Port markers on every macro while a wire command is active. */
 const PortMarks = ({ zoom }: { zoom: number }) => {
   const doc = useVisibleDoc();
@@ -195,7 +216,7 @@ export const Canvas = () => {
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
-    if (useStore.getState().textEdit) return;
+    if (useStore.getState().textEdit || useStore.getState().pendingLayout) return;
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
     const { screen, world } = local(e);
     if (e.button === 1) {
@@ -250,6 +271,7 @@ export const Canvas = () => {
             <SelectionMark key={s.id} s={s} zoom={view.zoom} />
           ))}
           <PortMarks zoom={view.zoom} />
+          <LockBadges zoom={view.zoom} />
           <Overlays zoom={view.zoom} />
         </g>
       </svg>

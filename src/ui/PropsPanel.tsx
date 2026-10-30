@@ -2,7 +2,7 @@ import { useStore } from '../store';
 import { LINE_PRESETS } from '../model/presets';
 import { DEFAULT_LABEL_POS } from '../model/geometry';
 import { flowSize } from '../model/macros';
-import { addToLibrary, arrangeSelection, explodeSelection, makeMacro, rotateSelection } from './commands';
+import { addToLibrary, arrangeSelection, explodeSelection, makeMacro, rotateSelection, toggleLock } from './commands';
 import type { BoxShape, Dash, Direction, DotShape, MacroShape, Shape, Stroke, TextAnchor, TextShape, WireShape } from '../model/types';
 
 let colorCtx: CanvasRenderingContext2D | null = null;
@@ -309,6 +309,7 @@ const ArrangeRow = () => (
     </div>
     <div className="seg arrange make-macro">
       <button type="button" title="Turn the selection into a reusable macro (Ctrl+M)" onClick={makeMacro}>Make macro…</button>
+      <button type="button" title="Auto layout leaves locked shapes where they are (Ctrl+L)" onClick={toggleLock}>Lock / unlock</button>
     </div>
   </section>
 );

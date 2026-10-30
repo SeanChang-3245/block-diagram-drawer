@@ -155,6 +155,8 @@ interface ImportCtx {
   circles: CircleCandidate[];
   /** Shapes that came with an explicit model; recognition leaves them alone. */
   modelIds: Set<string>;
+  /** Blocks whose model left out x / y. */
+  unplaced: Set<string>;
   serializer: XMLSerializer;
   viewBox: { x: number; y: number; w: number; h: number };
 }
@@ -206,14 +208,18 @@ const walk = (el: Element, ctx: ImportCtx, ignoreTransform = false): void => {
   const model = el.getAttribute('data-bdd-json');
   if (model) {
     let s: Shape | null = null;
+    let json: Record<string, unknown> | null = null;
     try {
-      s = normalizeShape(JSON.parse(model));
+      json = JSON.parse(model);
+      s = normalizeShape(json);
     } catch {
       // malformed JSON: fall back to the visible markup below
     }
     if (s) {
       ctx.shapes.push(s);
       ctx.modelIds.add(s.id);
+      // Blocks given without coordinates are placed by auto layout after import.
+      if ((s.type === 'box' || s.type === 'macro') && (typeof json?.x !== 'number' || typeof json?.y !== 'number')) ctx.unplaced.add(s.id);
       return;
     }
   }
@@ -353,6 +359,8 @@ export interface ImportResult {
   stats: Partial<Record<Shape['type'], number>>;
   /** What the hardware recognition pass found (foreign files only). */
   recognized?: RecognizeStats;
+  /** Blocks that came without coordinates and still need auto layout. */
+  unplaced: string[];
 }
 
 export const importSvg = (source: string): ImportResult => {
@@ -369,7 +377,7 @@ export const importSvg = (source: string): ImportResult => {
       ? { x: vbNums[0], y: vbNums[1], w: vbNums[2], h: vbNums[3] }
       : { x: 0, y: 0, w: num(root.getAttribute('width'), 0), h: num(root.getAttribute('height'), 0) };
 
-  const ctx: ImportCtx = { shapes: [], circles: [], modelIds: new Set(), serializer: new XMLSerializer(), viewBox };
+  const ctx: ImportCtx = { shapes: [], circles: [], modelIds: new Set(), unplaced: new Set(), serializer: new XMLSerializer(), viewBox };
   walk(root, ctx);
   let shapes = ctx.shapes;
   let recognized: RecognizeStats | undefined;
@@ -388,5 +396,6 @@ export const importSvg = (source: string): ImportResult => {
     doc.order.push(s.id);
     stats[s.type] = (stats[s.type] ?? 0) + 1;
   }
-  return { doc: native ? doc : routeConnections(doc), native, stats, recognized };
+  const unplaced = [...ctx.unplaced].filter((id) => doc.shapes[id]);
+  return { doc: native ? doc : routeConnections(doc), native, stats, recognized, unplaced };
 };

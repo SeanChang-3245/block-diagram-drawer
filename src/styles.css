@@ -451,3 +451,38 @@ kbd {
 .status .route-toggle {
   padding: 1px 8px;
 }
+
+.layout-dialog {
+  width: min(480px, 100%);
+}
+.layout-rows .prop-row {
+  grid-template-columns: 70px 1fr;
+}
+.layout-rows input[type='number'] {
+  width: 70px;
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.layout-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+.layout-bar {
+  position: fixed;
+  top: 52px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 7px 12px;
+  box-shadow: 0 6px 24px rgba(30, 50, 100, 0.2);
+  z-index: 15;
+  white-space: nowrap;
+}

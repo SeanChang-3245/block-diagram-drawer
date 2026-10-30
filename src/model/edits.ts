@@ -72,7 +72,7 @@ const stretchRect = <T extends RectShape>(b: T, e: Edges, dx: number, dy: number
  * stay orthogonal; wire ends never slide (they may be attached to something),
  * so a segment ending there gets a Z bend instead.
  */
-const placeWirePoints = (w: WireShape, placed: Map<number, Pt>): WireShape => {
+export const placeWirePoints = (w: WireShape, placed: Map<number, Pt>): WireShape => {
   const orig = w.points;
   const last = orig.length - 1;
   const pts = orig.map((p, i) => ({ ...(placed.get(i) ?? p) }));

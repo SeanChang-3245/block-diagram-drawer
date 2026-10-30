@@ -17,6 +17,8 @@ interface ShapeBase {
   id: string;
   /** Shapes sharing a groupId are selected and moved together. */
   groupId?: string;
+  /** Auto layout leaves locked shapes where they are. */
+  locked?: boolean;
 }
 
 export interface BoxShape extends ShapeBase {

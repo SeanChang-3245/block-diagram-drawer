@@ -5,6 +5,7 @@ import { loadLibrary } from './io/library';
 import type { Rect } from './model/geometry';
 import { syncConnections, type Edges } from './model/edits';
 import { rerouteAffected } from './model/router';
+import { DEFAULT_LAYOUT, type LayoutOptions } from './model/layout';
 
 export type ToolName = 'select' | 'rect' | 'wire' | 'bus' | 'text' | 'move' | 'copy' | 'stretch' | 'place';
 
@@ -64,6 +65,10 @@ interface State {
   autoRoute: boolean;
   /** `a` was pressed: the next key picks how to align. */
   alignArmed: boolean;
+  showLayout: boolean;
+  layoutOpts: LayoutOptions;
+  /** Auto-layout result shown for approval before it is applied. */
+  pendingLayout: Doc | null;
   /** User-defined macros kept in this browser. */
   library: CustomDef[];
   showHelp: boolean;
@@ -144,6 +149,9 @@ export const useStore = create<State>((set, get) => ({
   showAiPrompt: false,
   autoRoute: readPref('bdd-auto-route', true),
   alignArmed: false,
+  showLayout: false,
+  layoutOpts: DEFAULT_LAYOUT,
+  pendingLayout: null,
   library: loadLibrary(),
   showHelp: false,
   showProps: true,
@@ -230,4 +238,4 @@ export const useStore = create<State>((set, get) => ({
 }));
 
 /** Doc currently on screen: the live preview during a drag, otherwise the committed doc. */
-export const useVisibleDoc = (): Doc => useStore((s) => s.preview ?? s.doc);
+export const useVisibleDoc = (): Doc => useStore((s) => s.pendingLayout ?? s.preview ?? s.doc);
